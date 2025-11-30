@@ -1,7 +1,7 @@
 // api/steelers.js
 // Vercel serverless function using TheSportsDB for Pittsburgh Steelers only
 
-const STEELERS_ID = "134922";
+const STEELERS_ID = "134925";
 
 const LAST_EVENTS_URL =
   `https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=${STEELERS_ID}`;
@@ -107,3 +107,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

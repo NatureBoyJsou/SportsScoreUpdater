@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pittsburgh Steelers — Latest</title>
+  <title>Pittsburgh Penguins — Latest</title>
+
   <style>
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
     h1 { margin:6px 0 12px; font-size:20px; }
@@ -16,20 +17,29 @@
     small { color:#bbb; }
   </style>
 </head>
+
 <body>
   <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
+
   <div id="main" class="card">
     <div id="loading">Loading…</div>
+
     <div id="content" style="display:none;">
       <div id="latestGameContainer"></div>
       <div class="status"><small id="fetchedAt"></small></div>
+
       <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
       <div id="schedule"></div>
     </div>
   </div>
 
   <script>
-    const API = '/api/penguins'; // relative path on vercel deployment; change to full URL if needed
+    const API = '/api/penguins';
+
+    function safeDate(d) {
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
 
     async function render() {
       const loading = document.getElementById('loading');
@@ -50,52 +60,64 @@
 
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-        // latest game
+        // ---- LATEST GAME (with safe date) ----
         const latest = json.latestGame;
+
         if (latest) {
+          const dt = safeDate(latest.gameDate);
+
           latestContainer.innerHTML = `
             <div>
-              <div class="team"><strong>${latest.away.name}</strong></div>
-              <div class="score">${latest.away.score ?? '-'}</div>
-              <div class="team" style="text-align:right;"><strong>${latest.home.name}</strong></div>
+              <div class="team"><strong>${latest.away?.name || "?"}</strong></div>
+              <div class="score">${latest.away?.score ?? '-'}</div>
+
+              <div class="team" style="text-align:right;"><strong>${latest.home?.name || "?"}</strong></div>
               <div style="clear:both;"></div>
-              <div class="status">Status: ${latest.status} — ${new Date(latest.gameDate).toLocaleString()}</div>
+
+              <div class="status">
+                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
+              </div>
             </div>
           `;
         } else {
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        // schedule
-        scheduleDiv.innerHTML = '';
-        const upcoming = json.upcomingGames || [];
+        // ---- UPCOMING GAMES ----
+        scheduleDiv.innerHTML = "";
+        let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
+
+        // Remove games with invalid dates
+        upcoming = upcoming.filter(g => safeDate(g.gameDate));
+
         if (upcoming.length === 0) {
-          scheduleDiv.innerHTML = '<div class="gameRow">No upcoming games in the returned schedule.</div>';
+          scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';
         } else {
           upcoming.forEach(g => {
-            const el = document.createElement('div');
-            el.className = 'gameRow';
-            el.innerHTML = `
-              <div><strong>${g.away.name}</strong> @ <strong>${g.home.name}</strong></div>
-              <div><small>${new Date(g.gameDate).toLocaleString()} — Status: ${g.status}</small></div>
+            const dt = safeDate(g.gameDate);
+            const row = document.createElement('div');
+
+            row.className = 'gameRow';
+            row.innerHTML = `
+              <div><strong>${g.away?.name || "?"}</strong> @ <strong>${g.home?.name || "?"}</strong></div>
+              <div><small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small></div>
             `;
-            scheduleDiv.appendChild(el);
+
+            scheduleDiv.appendChild(row);
           });
         }
 
       } catch (err) {
         loading.style.display = 'none';
         content.style.display = 'block';
+
         latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
-        scheduleDiv.innerHTML = '<div style="color:salmon">' + (err && err.message ? err.message : String(err)) + '</div>';
+        scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;
       }
     }
 
     render();
-
-    // auto-refresh every 45 seconds
     setInterval(render, 45 * 1000);
   </script>
 </body>
 </html>
-

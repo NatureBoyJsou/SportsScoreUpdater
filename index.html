@@ -1,93 +1,123 @@
-// api/steelers.js
-// Fully patched version — correct NFL scoring + safe dates + full schedule
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pittsburgh Penguins — Latest</title>
 
-const TEAM_ID = "134925"; // Pittsburgh Steelers
-const API = "https://www.thesportsdb.com/api/v1/json/123";
+  <style>
+    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
+    h1 { margin:6px 0 12px; font-size:20px; }
+    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; }
+    .team { display:inline-block; width:130px; vertical-align:middle; }
+    .score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
+    .status { margin-top:8px; font-size:14px; color:#ccc; }
+    #schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
+    .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
+    small { color:#bbb; }
+  </style>
+</head>
 
-const CACHE_TTL = 20 * 1000;
-let cache = { ts: 0, body: null };
+<body>
+  <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Content-Type", "application/json");
+  <div id="main" class="card">
+    <div id="loading">Loading…</div>
 
-  try {
-    const now = Date.now();
+    <div id="content" style="display:none;">
+      <div id="latestGameContainer"></div>
+      <div class="status"><small id="fetchedAt"></small></div>
 
-    // Serve cache
-    if (cache.body && now - cache.ts < CACHE_TTL) {
-      return res.status(200).send(cache.body);
+      <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+      <div id="schedule"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api/penguins';
+
+    function safeDate(d) {
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? null : dt;
     }
 
-    // LAST GAME
-    const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
-    const lastJson = await lastRes.json();
-    const lastGame = lastJson?.results?.[0] || null;
+    async function render() {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const latestContainer = document.getElementById('latestGameContainer');
+      const scheduleDiv = document.getElementById('schedule');
+      const fetchedEl = document.getElementById('fetchedAt');
 
-    // NEXT GAMES
-    const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
-    const nextJson = await nextRes.json();
-    const nextGames = nextJson?.events || [];
+      loading.style.display = 'block';
+      content.style.display = 'none';
 
-    // fixes date + scoring + status
-    const formatGame = (g, future = false) => {
-      if (!g) return null;
+      try {
+        const res = await fetch(API);
+        const json = await res.json();
 
-      // pick best date source
-      const timestamp = g.strTimestamp || null;
-      const dateEvent = g.dateEvent || null;
+        loading.style.display = 'none';
+        content.style.display = 'block';
 
-      let gameDate = "TBD";
-      if (timestamp) gameDate = timestamp;
-      else if (dateEvent) gameDate = dateEvent;
+        fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-      // NFL scoring fix (uses total if normal score missing)
-      const homeScore =
-        !future
-          ? Number(g.intHomeScore ?? g.intHomeScoreTotal ?? null)
-          : null;
+        // ---- LATEST GAME (with safe date) ----
+        const latest = json.latestGame;
 
-      const awayScore =
-        !future
-          ? Number(g.intAwayScore ?? g.intAwayScoreTotal ?? null)
-          : null;
+        if (latest) {
+          const dt = safeDate(latest.gameDate);
 
-      return {
-        idEvent: g.idEvent,
-        gameDate,
-        status: g.strStatus || (future ? "Scheduled" : "Final"),
-        home: {
-          id: g.idHomeTeam,
-          name: g.strHomeTeam,
-          score: homeScore,
-        },
-        away: {
-          id: g.idAwayTeam,
-          name: g.strAwayTeam,
-          score: awayScore,
+          latestContainer.innerHTML = `
+            <div>
+              <div class="team"><strong>${latest.away?.name || "?"}</strong></div>
+              <div class="score">${latest.away?.score ?? '-'}</div>
+
+              <div class="team" style="text-align:right;"><strong>${latest.home?.name || "?"}</strong></div>
+              <div style="clear:both;"></div>
+
+              <div class="status">
+                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
+              </div>
+            </div>
+          `;
+        } else {
+          latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
-      };
-    };
 
-    const payload = {
-      team: "Pittsburgh Steelers",
-      fetchedAt: new Date().toISOString(),
-      latestGame: formatGame(lastGame),
-      nextGame: formatGame(nextGames[0], true),
-      upcomingGames: nextGames.map(g => formatGame(g, true)),
-    };
+        // ---- UPCOMING GAMES ----
+        scheduleDiv.innerHTML = "";
+        let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
-    const body = JSON.stringify(payload);
-    cache = { ts: now, body };
+        // Remove games with invalid dates
+        upcoming = upcoming.filter(g => safeDate(g.gameDate));
 
-    return res.status(200).send(body);
+        if (upcoming.length === 0) {
+          scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';
+        } else {
+          upcoming.forEach(g => {
+            const dt = safeDate(g.gameDate);
+            const row = document.createElement('div');
 
-  } catch (err) {
-    console.error("Steelers API Error:", err);
-    return res.status(500).json({
-      error: "Server Error",
-      details: err.message || String(err)
-    });
-  }
-}
+            row.className = 'gameRow';
+            row.innerHTML = `
+              <div><strong>${g.away?.name || "?"}</strong> @ <strong>${g.home?.name || "?"}</strong></div>
+              <div><small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small></div>
+            `;
+
+            scheduleDiv.appendChild(row);
+          });
+        }
+
+      } catch (err) {
+        loading.style.display = 'none';
+        content.style.display = 'block';
+
+        latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
+        scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;
+      }
+    }
+
+    render();
+    setInterval(render, 45 * 1000);
+  </script>
+</body>
+</html>

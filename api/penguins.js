@@ -83,7 +83,7 @@ export default async function handler(req, res) {
       nextGame: formatGame(nextGames[0], true),
       upcomingGames: nextGames.map(g => formatGame(g, true)),
     };
-
+console.log("RAW API DATA:", json);
     const body = JSON.stringify(payload);
     cache = { ts: now, body };
 
@@ -97,3 +97,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

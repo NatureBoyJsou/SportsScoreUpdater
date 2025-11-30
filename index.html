@@ -60,18 +60,25 @@
 
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-        // ---- LATEST GAME (with safe date) ----
+        // ---------------------------
+        // LATEST GAME — FIX APPLIED
+        // ---------------------------
         const latest = json.latestGame;
 
         if (latest) {
           const dt = safeDate(latest.gameDate);
 
+          const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
+          const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
+
           latestContainer.innerHTML = `
             <div>
               <div class="team"><strong>${latest.away?.name || "?"}</strong></div>
-              <div class="score">${latest.away?.score ?? '-'}</div>
+              <div class="score">${awayScore}</div>
 
               <div class="team" style="text-align:right;"><strong>${latest.home?.name || "?"}</strong></div>
+              <div class="score">${homeScore}</div>
+
               <div style="clear:both;"></div>
 
               <div class="status">
@@ -83,12 +90,17 @@
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        // ---- UPCOMING GAMES ----
+        // ---------------------------
+        // UPCOMING GAMES — FIX APPLIED
+        // ---------------------------
         scheduleDiv.innerHTML = "";
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
-        // Remove games with invalid dates
+        // filter invalid dates
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
+
+        // sort chronologically (important!)
+        upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
           scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';

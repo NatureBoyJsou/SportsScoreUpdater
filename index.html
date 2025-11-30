@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pittsburgh Penguins — Latest</title>
+  <title>Pittsburgh Steelers — Latest</title>
 
   <style>
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
@@ -37,7 +37,7 @@
 </head>
 
 <body>
-  <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
+  <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
 
   <div id="main" class="card">
     <div id="loading">Loading…</div>
@@ -52,11 +52,21 @@
   </div>
 
   <script>
-    const API = '/api/penguins';
+    const API = '/api/steelers';   // UPDATED
 
     function safeDate(d) {
       const dt = new Date(d);
       return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function pickLogo(team) {
+      return (
+        team?.logo ||
+        team?.badge ||
+        team?.strTeamLogo ||
+        team?.strTeamBadge ||
+        ""
+      );
     }
 
     async function render() {
@@ -86,20 +96,20 @@
         if (latest) {
           const dt = safeDate(latest.gameDate);
 
-          const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
-          const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
+          const awayScore = latest.away?.score ?? '-';
+          const homeScore = latest.home?.score ?? '-';
 
           latestContainer.innerHTML = `
             <div>
               <div class="team">
-                <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
+                <img class="teamLogo" src="${pickLogo(latest.away)}" alt="">
                 <strong>${latest.away?.name || "?"}</strong>
               </div>
 
               <div class="score">${awayScore}</div>
 
               <div class="team" style="text-align:right;">
-                <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
+                <img class="teamLogo" src="${pickLogo(latest.home)}" alt="">
                 <strong>${latest.home?.name || "?"}</strong>
               </div>
 
@@ -122,10 +132,7 @@
         scheduleDiv.innerHTML = "";
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
-        // filter invalid dates
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
-
-        // sort chronologically
         upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
@@ -138,12 +145,12 @@
 
             row.innerHTML = `
               <div style="display:flex; align-items:center; gap:10px;">
-                <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
+                <img class="teamLogoSmall" src="${pickLogo(g.away)}">
                 <strong>${g.away?.name || "?"}</strong>
 
                 <span style="opacity:0.7; margin:0 8px;">@</span>
 
-                <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
+                <img class="teamLogoSmall" src="${pickLogo(g.home)}">
                 <strong>${g.home?.name || "?"}</strong>
               </div>
 

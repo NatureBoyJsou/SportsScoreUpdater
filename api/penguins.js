@@ -20,7 +20,6 @@ export default async function handler(req, res) {
   try {
     const now = Date.now();
 
-    // Serve cached response if fresh
     if (_cache.body && now - _cache.ts < CACHE_TTL_MS) {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Headers", "*");
@@ -28,15 +27,13 @@ export default async function handler(req, res) {
       return res.status(200).send(_cache.body);
     }
 
-    // Fetch last Steelers game
+    // Fetch last + next games
     const lastRes = await fetch(LAST_EVENTS_URL);
     const lastData = await lastRes.json();
 
-    // Fetch next Steelers games
     const nextRes = await fetch(NEXT_EVENTS_URL);
     const nextData = await nextRes.json();
 
-    // ALWAYS ensure Steelers-only (SportsDB sometimes returns extra events)
     const lastEvents = (lastData.results || []).filter(
       ev => ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
     );
@@ -45,11 +42,37 @@ export default async function handler(req, res) {
       ev => ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
     );
 
-    // Most recent game
-    const lastGame = lastEvents.length ? lastEvents[0] : null;
+    const nowDate = new Date();
 
-    const latestGame = lastGame
-      ? {
+    // 👉 Find NEXT or TODAY game
+    const futureGames = nextEvents
+      .filter(ev => new Date(ev.dateEvent) >= nowDate)
+      .sort((a, b) => new Date(a.dateEvent) - new Date(b.dateEvent));
+
+    let mainGame = null;
+
+    if (futureGames.length > 0) {
+      // Use the earliest future/today game as main game
+      const g = futureGames[0];
+      mainGame = {
+        gameDate: g.dateEvent,
+        status: g.strStatus || "Scheduled",
+        home: {
+          id: g.idHomeTeam,
+          name: g.strHomeTeam,
+          score: null
+        },
+        away: {
+          id: g.idAwayTeam,
+          name: g.strAwayTeam,
+          score: null
+        }
+      };
+    } else {
+      // No future games → fallback to last completed
+      const lastGame = lastEvents.length ? lastEvents[0] : null;
+      if (lastGame) {
+        mainGame = {
           gameDate: lastGame.dateEvent,
           status: "Final",
           home: {
@@ -62,11 +85,12 @@ export default async function handler(req, res) {
             name: lastGame.strAwayTeam,
             score: Number(lastGame.intAwayScore)
           }
-        }
-      : null;
+        };
+      }
+    }
 
-    // Future schedule (next 10 NFL games)
-    const upcomingGames = nextEvents.slice(0, 10).map(ev => ({
+    // 👉 Upcoming games (excluding the main one)
+    const upcomingGames = futureGames.slice(1).map(ev => ({
       gameDate: ev.dateEvent,
       status: ev.strStatus || "Scheduled",
       home: {
@@ -81,19 +105,16 @@ export default async function handler(req, res) {
       }
     }));
 
-    // Response body
     const payload = {
       fetchedAt: new Date().toISOString(),
-      latestGame,
-      upcomingGames
+      mainGame,           // <-- this is what your UI should show first
+      upcomingGames       // <--- rest of the schedule
     };
 
     const body = JSON.stringify(payload);
 
-    // Cache
     _cache = { ts: now, body };
 
-    // Send response
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Content-Type", "application/json");
@@ -107,4 +128,3 @@ export default async function handler(req, res) {
     });
   }
 }
-

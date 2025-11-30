@@ -1,7 +1,7 @@
 // api/steelers.js
 // Fully patched version — correct scoring + correct dates + stable future schedule
 
-const TEAM_ID = "134925"; // Pittsburgh Steelers
+const TEAM_ID = "134924"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
 const CACHE_TTL = 20 * 1000;
 
@@ -97,5 +97,6 @@ export default async function handler(req, res) {
     });
   }
 }
+
 
 

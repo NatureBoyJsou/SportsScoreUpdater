@@ -1,14 +1,69 @@
 // api/steelers.js
-// Fully corrected NFL version — correct scoring + correct dates + correct logo fields
+// NFL version with ESPN logos only
 
-const TEAM_ID = "134925"; // Pittsburgh Steelers
+const TEAM_ID = "134925"; // Pittsburgh Steelers (TheSportsDB ID)
 const API = "https://www.thesportsdb.com/api/v1/json/123";
 const CACHE_TTL = 20 * 1000;
 
 let cache = { ts: 0, body: null };
 
 //
-// Fetch a team's logos
+// ───────────────────────────────────────────────────────────
+//  ESPN LOGO LOOKUP TABLE
+// ───────────────────────────────────────────────────────────
+//
+const ESPN_LOGOS = {
+  "Pittsburgh Steelers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/pit.png",
+  "Baltimore Ravens": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/bal.png",
+  "Cleveland Browns": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/cle.png",
+  "Cincinnati Bengals": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/cin.png",
+
+  "Kansas City Chiefs": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/kc.png",
+  "Denver Broncos": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/den.png",
+  "Las Vegas Raiders": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/lv.png",
+  "Los Angeles Chargers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/lac.png",
+
+  "Buffalo Bills": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/buf.png",
+  "Miami Dolphins": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/mia.png",
+  "New York Jets": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/nyj.png",
+  "New England Patriots": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/ne.png",
+
+  "Houston Texans": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/hou.png",
+  "Jacksonville Jaguars": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/jax.png",
+  "Tennessee Titans": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/ten.png",
+  "Indianapolis Colts": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/ind.png",
+
+  "Philadelphia Eagles": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/phi.png",
+  "Dallas Cowboys": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/dal.png",
+  "Washington Commanders": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/wsh.png",
+  "New York Giants": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/nyg.png",
+
+  "San Francisco 49ers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sf.png",
+  "Seattle Seahawks": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sea.png",
+  "Los Angeles Rams": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/lar.png",
+  "Arizona Cardinals": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/ari.png",
+
+  "Detroit Lions": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/det.png",
+  "Green Bay Packers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/gb.png",
+  "Chicago Bears": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/chi.png",
+  "Minnesota Vikings": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/min.png",
+
+  "Tampa Bay Buccaneers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/tb.png",
+  "Atlanta Falcons": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/atl.png",
+  "New Orleans Saints": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/no.png",
+  "Carolina Panthers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png"
+};
+
+//
+// Helper to return the ESPN logo for a given team name
+//
+function getESPNLogo(teamName) {
+  if (!teamName) return null;
+  return ESPN_LOGOS[teamName] || null;
+}
+
+//
+// DO NOT remove – we still fetch team ID for names
 //
 async function fetchTeam(teamId) {
   if (!teamId) return null;
@@ -24,7 +79,7 @@ async function fetchTeam(teamId) {
 }
 
 //
-// Attach logos in the exact fields your frontend uses
+// Attach ESPN logos to normalized game object
 //
 async function enrichGameWithLogos(game) {
   if (!game) return game;
@@ -38,15 +93,13 @@ async function enrichGameWithLogos(game) {
     ...game,
     home: {
       ...game.home,
-
-      // Corrected fields based on TheSportsDB response
-      strTeamBadge: homeTeam?.strBadge || null,
-      logo: homeTeam?.strLogo || null
+      strTeamBadge: getESPNLogo(homeTeam?.strTeam),
+      logo: getESPNLogo(homeTeam?.strTeam)
     },
     away: {
       ...game.away,
-      strTeamBadge: awayTeam?.strBadge || null,
-      logo: awayTeam?.strLogo || null
+      strTeamBadge: getESPNLogo(awayTeam?.strTeam),
+      logo: getESPNLogo(awayTeam?.strTeam)
     }
   };
 }
@@ -57,7 +110,6 @@ async function enrichGameWithLogos(game) {
 function formatGame(g, future = false) {
   if (!g) return null;
 
-  // ---- DATE FIX ----
   let gameDate = "TBD";
   if (g.strTimestamp) {
     gameDate = new Date(g.strTimestamp).toISOString();
@@ -65,7 +117,6 @@ function formatGame(g, future = false) {
     gameDate = new Date(g.dateEvent).toISOString();
   }
 
-  // ---- NFL SCORE FIX ----
   let homeScore = null;
   let awayScore = null;
 
@@ -116,17 +167,13 @@ export default async function handler(req, res) {
       return res.status(200).send(cache.body);
     }
 
-    //
     // LAST GAME
-    //
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
     const lastGameRaw = lastJson?.results?.[0] || null;
     const lastGame = await enrichGameWithLogos(formatGame(lastGameRaw));
 
-    //
-    // UPCOMING GAMES
-    //
+    // UPCOMING
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
     const nextGamesRaw = nextJson?.events || [];

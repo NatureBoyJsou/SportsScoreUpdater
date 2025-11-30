@@ -1,5 +1,5 @@
 // api/steelers.js
-// NFL version with ESPN logos only (fully patched)
+// NFL version with ESPN logos only (FULL SEASON ENABLED)
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers (TheSportsDB ID)
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -125,25 +125,52 @@ export default async function handler(req, res) {
       return res.status(200).send(cache.body);
     }
 
+    //
+    // ────────────────────────────────────
     // LAST GAME
+    // ────────────────────────────────────
+    //
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
     const lastGameRaw = lastJson?.results?.[0] || null;
     const lastGame = formatGame(lastGameRaw);
 
-    // UPCOMING
-    const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
-    const nextJson = await nextRes.json();
-    const nextGamesRaw = nextJson?.events || [];
+    //
+    // ────────────────────────────────────
+    // UPCOMING — FULL SEASON, FILTERED
+    // ────────────────────────────────────
+    //
+    const seasonRes = await fetch(`${API}/eventsseason.php?id=${TEAM_ID}&s=2024`);
+    const seasonJson = await seasonRes.json();
+    const seasonGames = seasonJson?.events || [];
 
-    const nextFormatted = nextGamesRaw.map(g => formatGame(g, true));
+    const nowDate = new Date();
 
+    function safeDate(d) {
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    // Only future games
+    const upcomingRaw = seasonGames.filter(g => {
+      const dt = safeDate(g.dateEvent);
+      return dt && dt >= nowDate;
+    });
+
+    // Sort ascending by date
+    upcomingRaw.sort((a, b) => new Date(a.dateEvent) - new Date(b.dateEvent));
+
+    const upcomingFormatted = upcomingRaw.map(g => formatGame(g, true));
+
+    //
+    // FINAL PAYLOAD
+    //
     const payload = {
       team: "Pittsburgh Steelers",
       fetchedAt: new Date().toISOString(),
       latestGame: lastGame,
-      nextGame: nextFormatted[0] || null,
-      upcomingGames: nextFormatted
+      nextGame: upcomingFormatted[0] || null,
+      upcomingGames: upcomingFormatted
     };
 
     const body = JSON.stringify(payload);

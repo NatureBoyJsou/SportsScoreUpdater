@@ -1,7 +1,10 @@
 // api/penguins.js
 // Vercel serverless function (Node.js). Uses global cache to reduce NHL API calls.
 
-const NHL_SCHEDULE_URL = 'https://statsapi.web.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+// FIX: Use Akamai NHL API endpoint (works on Vercel)
+// const NHL_SCHEDULE_URL = 'https://statsapi.web.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+const NHL_SCHEDULE_URL = 'https://statsapi-prod.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+
 const CACHE_TTL_MS = 20 * 1000; // 20 seconds (adjust as needed)
 
 let _cache = {
@@ -35,6 +38,7 @@ export default async function handler(req, res) {
 
     // Simplify and compute latest game + upcoming games
     const dates = data.dates || [];
+
     // Build list of games (flatten)
     const games = [];
     for (const day of dates) {
@@ -43,20 +47,23 @@ export default async function handler(req, res) {
       }
     }
 
-    // Find latest (most recent past or in-progress) and the upcoming ones
-    // We will assume dates appear chronological. Use gameDate to sort just in case.
-    games.sort((a,b) => new Date(a.gameDate) - new Date(b.gameDate));
+    // Sort games by date
+    games.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
-    // Latest = last game with status not 'Scheduled' OR if all Scheduled, pick previous if any
+    // Find latest game (not Scheduled)
     let latestGame = null;
     for (let i = games.length - 1; i >= 0; i--) {
       const s = games[i].status?.detailedState || '';
-      if (s && s !== 'Scheduled') { latestGame = games[i]; break; }
+      if (s && s !== 'Scheduled') {
+        latestGame = games[i];
+        break;
+      }
     }
-    // If none found, pick the last one if exists
-    if (!latestGame && games.length) latestGame = games[games.length -1];
 
-    // Build upcoming (next few scheduled or future games)
+    // If none found, fallback to last game
+    if (!latestGame && games.length) latestGame = games[games.length - 1];
+
+    // Find upcoming future games
     const upcoming = games
       .filter(g => (new Date(g.gameDate) >= new Date()))
       .slice(0, 10)
@@ -75,7 +82,7 @@ export default async function handler(req, res) {
         status: g.status?.detailedState || g.status?.abstractGameState || ''
       }));
 
-    // Prepare payload
+    // Build response payload
     const payload = {
       fetchedAt: new Date().toISOString(),
       latestGame: latestGame ? {
@@ -97,14 +104,15 @@ export default async function handler(req, res) {
 
     const body = JSON.stringify(payload);
 
-    // cache
+    // Cache result
     _cache = { ts: now, body };
 
-    // response with CORS enabled
+    // Return response
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).send(body);
+
   } catch (err) {
     console.error('Handler error', err);
     res.setHeader('Access-Control-Allow-Origin', '*');

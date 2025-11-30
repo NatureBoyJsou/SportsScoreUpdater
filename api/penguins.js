@@ -1,5 +1,5 @@
 // api/steelers.js
-// NFL version with ESPN logos only
+// NFL version with ESPN logos only (fully patched)
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers (TheSportsDB ID)
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -54,54 +54,8 @@ const ESPN_LOGOS = {
   "Carolina Panthers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png"
 };
 
-//
-// Helper to return the ESPN logo for a given team name
-//
 function getESPNLogo(teamName) {
-  if (!teamName) return null;
   return ESPN_LOGOS[teamName] || null;
-}
-
-//
-// DO NOT remove – we still fetch team ID for names
-//
-async function fetchTeam(teamId) {
-  if (!teamId) return null;
-
-  try {
-    const res = await fetch(`${API}/lookupteam.php?id=${teamId}`);
-    const json = await res.json();
-    return json?.teams?.[0] || null;
-  } catch (e) {
-    console.error("Team lookup failed:", e);
-    return null;
-  }
-}
-
-//
-// Attach ESPN logos to normalized game object
-//
-async function enrichGameWithLogos(game) {
-  if (!game) return game;
-
-  const [homeTeam, awayTeam] = await Promise.all([
-    fetchTeam(game.home.id),
-    fetchTeam(game.away.id)
-  ]);
-
-  return {
-    ...game,
-    home: {
-      ...game.home,
-      strTeamBadge: getESPNLogo(homeTeam?.strTeam),
-      logo: getESPNLogo(homeTeam?.strTeam)
-    },
-    away: {
-      ...game.away,
-      strTeamBadge: getESPNLogo(awayTeam?.strTeam),
-      logo: getESPNLogo(awayTeam?.strTeam)
-    }
-  };
 }
 
 //
@@ -142,13 +96,17 @@ function formatGame(g, future = false) {
     home: {
       id: g.idHomeTeam,
       name: g.strHomeTeam,
-      score: homeScore
+      score: homeScore,
+      logo: getESPNLogo(g.strHomeTeam),
+      strTeamBadge: getESPNLogo(g.strHomeTeam)
     },
 
     away: {
       id: g.idAwayTeam,
       name: g.strAwayTeam,
-      score: awayScore
+      score: awayScore,
+      logo: getESPNLogo(g.strAwayTeam),
+      strTeamBadge: getESPNLogo(g.strAwayTeam)
     }
   };
 }
@@ -171,16 +129,14 @@ export default async function handler(req, res) {
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
     const lastGameRaw = lastJson?.results?.[0] || null;
-    const lastGame = await enrichGameWithLogos(formatGame(lastGameRaw));
+    const lastGame = formatGame(lastGameRaw);
 
     // UPCOMING
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
     const nextGamesRaw = nextJson?.events || [];
 
-    const nextFormatted = await Promise.all(
-      nextGamesRaw.map(g => enrichGameWithLogos(formatGame(g, true)))
-    );
+    const nextFormatted = nextGamesRaw.map(g => formatGame(g, true));
 
     const payload = {
       team: "Pittsburgh Steelers",
@@ -204,3 +160,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

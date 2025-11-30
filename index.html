@@ -1,173 +1,127 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pittsburgh Steelers — Latest</title>
+<script>
+  const API = '/api/penguins';
 
-  <style>
-    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
-    h1 { margin:6px 0 12px; font-size:20px; }
-    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; }
+  function safeDate(d) {
+    const dt = new Date(d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
 
-    .team { display:inline-block; width:130px; vertical-align:middle; }
-    .score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
+  async function render() {
+    const loading = document.getElementById('loading');
+    const content = document.getElementById('content');
+    const latestContainer = document.getElementById('latestGameContainer');
+    const scheduleDiv = document.getElementById('schedule');
+    const fetchedEl = document.getElementById('fetchedAt');
 
-    .teamLogo {
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
-      display: block;
-      margin: 0 auto 4px auto;
-    }
+    loading.style.display = 'block';
+    content.style.display = 'none';
 
-    .teamLogoSmall {
-      width: 30px;
-      height: 30px;
-      object-fit: contain;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
+    try {
+      const res = await fetch(API);
+      const json = await res.json();
 
-    .status { margin-top:8px; font-size:14px; color:#ccc; }
-    #schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
-    .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
-    small { color:#bbb; }
-  </style>
-</head>
+      loading.style.display = 'none';
+      content.style.display = 'block';
 
-<body>
-  <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
+      fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-  <div id="main" class="card">
-    <div id="loading">Loading…</div>
+      // ---------------------------
+      // LATEST GAME
+      // ---------------------------
+      const latest = json.latestGame;
 
-    <div id="content" style="display:none;">
-      <div id="latestGameContainer"></div>
-      <div class="status"><small id="fetchedAt"></small></div>
+      if (latest) {
+        const dt = safeDate(latest.gameDate);
 
-      <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
-      <div id="schedule"></div>
-    </div>
-  </div>
+        const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
+        const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
 
-  <script>
-    const API = '/api/penguins';
+        latestContainer.innerHTML = `
+          <div>
+            <div class="team">
+              <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
+              <strong>${latest.away?.name || "?"}</strong>
+            </div>
 
-    function safeDate(d) {
-      const dt = new Date(d);
-      return isNaN(dt.getTime()) ? null : dt;
-    }
+            <div class="score">${awayScore}</div>
 
-    async function render() {
-      const loading = document.getElementById('loading');
-      const content = document.getElementById('content');
-      const latestContainer = document.getElementById('latestGameContainer');
-      const scheduleDiv = document.getElementById('schedule');
-      const fetchedEl = document.getElementById('fetchedAt');
+            <div class="team" style="text-align:right;">
+              <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
+              <strong>${latest.home?.name || "?"}</strong>
+            </div>
 
-      loading.style.display = 'block';
-      content.style.display = 'none';
+            <div class="score">${homeScore}</div>
 
-      try {
-        const res = await fetch(API);
-        const json = await res.json();
+            <div style="clear:both;"></div>
 
-        loading.style.display = 'none';
-        content.style.display = 'block';
+            <div class="status">
+              Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
+            </div>
+          </div>
+        `;
+      } else {
+        latestContainer.innerHTML = '<div>No recent game found.</div>';
+      }
 
-        fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
+      // ---------------------------
+      // UPCOMING GAMES
+      // ---------------------------
+      scheduleDiv.innerHTML = "";
+      let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
-        // ---------------------------
-        // LATEST GAME (WITH LOGOS)
-        // ---------------------------
-        const latest = json.latestGame;
+      console.log("Raw upcoming from backend:", upcoming);
 
-        if (latest) {
-          const dt = safeDate(latest.gameDate);
+      // Fix: normalize dates to avoid timezone mismatch
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-          const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
-          const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
+      upcoming = upcoming.filter(g => {
+        const dt = safeDate(g.gameDate);
+        if (!dt) return false;
+        const d2 = new Date(dt);
+        d2.setHours(0, 0, 0, 0);
+        return d2 >= today;
+      });
 
-          latestContainer.innerHTML = `
+      upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
+
+      if (upcoming.length === 0) {
+        scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';
+      } else {
+        upcoming.forEach(g => {
+          const dt = safeDate(g.gameDate);
+          const row = document.createElement('div');
+          row.className = 'gameRow';
+
+          row.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px;">
+              <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
+              <strong>${g.away?.name || "?"}</strong>
+
+              <span style="opacity:0.7; margin:0 8px;">@</span>
+
+              <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
+              <strong>${g.home?.name || "?"}</strong>
+            </div>
+
             <div>
-              <div class="team">
-                <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
-                <strong>${latest.away?.name || "?"}</strong>
-              </div>
-
-              <div class="score">${awayScore}</div>
-
-              <div class="team" style="text-align:right;">
-                <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
-                <strong>${latest.home?.name || "?"}</strong>
-              </div>
-
-              <div class="score">${homeScore}</div>
-
-              <div style="clear:both;"></div>
-
-              <div class="status">
-                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
-              </div>
+              <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
             </div>
           `;
-        } else {
-          latestContainer.innerHTML = '<div>No recent game found.</div>';
-        }
 
-        // ---------------------------
-        // UPCOMING GAMES (WITH LOGOS)
-        // ---------------------------
-        scheduleDiv.innerHTML = "";
-        let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
-
-        // filter invalid dates
-        upcoming = upcoming.filter(g => safeDate(g.gameDate));
-
-        // sort chronologically
-        upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
-
-        if (upcoming.length === 0) {
-          scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';
-        } else {
-          upcoming.forEach(g => {
-            const dt = safeDate(g.gameDate);
-            const row = document.createElement('div');
-            row.className = 'gameRow';
-
-            row.innerHTML = `
-              <div style="display:flex; align-items:center; gap:10px;">
-                <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
-                <strong>${g.away?.name || "?"}</strong>
-
-                <span style="opacity:0.7; margin:0 8px;">@</span>
-
-                <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
-                <strong>${g.home?.name || "?"}</strong>
-              </div>
-
-              <div>
-                <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
-              </div>
-            `;
-
-            scheduleDiv.appendChild(row);
-          });
-        }
-
-      } catch (err) {
-        loading.style.display = 'none';
-        content.style.display = 'block';
-
-        latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
-        scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;
+          scheduleDiv.appendChild(row);
+        });
       }
+
+    } catch (err) {
+      loading.style.display = 'none';
+      content.style.display = 'block';
+
+      latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
+      scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;
     }
+  }
 
-    render();
-    setInterval(render, 45 * 1000);
-  </script>
-</body>
-</html>
-
+  render();
+  setInterval(render, 45 * 1000);
+</script>

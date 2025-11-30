@@ -1,5 +1,5 @@
 // api/steelers.js
-// Fully patched version — correct scoring + correct dates + correct team logo fields
+// Fully corrected NFL version — correct scoring + correct dates + correct logo fields
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -24,8 +24,8 @@ async function fetchTeam(teamId) {
 }
 
 //
-// Enhance a formatted game with team logos
-// *** PATCHED to return strTeamBadge + strTeamLogo ***
+// Attach logos in the exact fields your frontend uses
+//
 async function enrichGameWithLogos(game) {
   if (!game) return game;
 
@@ -38,19 +38,21 @@ async function enrichGameWithLogos(game) {
     ...game,
     home: {
       ...game.home,
-      strTeamBadge: homeTeam?.strTeamBadge || null,
-      strTeamLogo: homeTeam?.strTeamLogo || null
+
+      // Corrected fields based on TheSportsDB response
+      strTeamBadge: homeTeam?.strBadge || null,
+      logo: homeTeam?.strLogo || null
     },
     away: {
       ...game.away,
-      strTeamBadge: awayTeam?.strTeamBadge || null,
-      strTeamLogo: awayTeam?.strTeamLogo || null
+      strTeamBadge: awayTeam?.strBadge || null,
+      logo: awayTeam?.strLogo || null
     }
   };
 }
 
 //
-// Convert raw API event into normalized object
+// Convert raw API event → normalized object
 //
 function formatGame(g, future = false) {
   if (!g) return null;
@@ -63,7 +65,7 @@ function formatGame(g, future = false) {
     gameDate = new Date(g.dateEvent).toISOString();
   }
 
-  // ---- NFL SCORING FIX ----
+  // ---- NFL SCORE FIX ----
   let homeScore = null;
   let awayScore = null;
 
@@ -101,7 +103,7 @@ function formatGame(g, future = false) {
 }
 
 //
-// Main API handler
+// MAIN API HANDLER
 //
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -123,7 +125,7 @@ export default async function handler(req, res) {
     const lastGame = await enrichGameWithLogos(formatGame(lastGameRaw));
 
     //
-    // NEXT GAMES
+    // UPCOMING GAMES
     //
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();

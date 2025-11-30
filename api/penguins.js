@@ -1,10 +1,10 @@
 // api/steelers.js
-// Fully patched version — correct NFL scoring + safe dates + full schedule
+// Fully patched version — correct scoring + correct dates + stable future schedule
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
-
 const CACHE_TTL = 20 * 1000;
+
 let cache = { ts: 0, body: null };
 
 export default async function handler(req, res) {
@@ -14,8 +14,6 @@ export default async function handler(req, res) {
 
   try {
     const now = Date.now();
-
-    // Serve cache
     if (cache.body && now - cache.ts < CACHE_TTL) {
       return res.status(200).send(cache.body);
     }
@@ -30,33 +28,41 @@ export default async function handler(req, res) {
     const nextJson = await nextRes.json();
     const nextGames = nextJson?.events || [];
 
-    // fixes date + scoring + status
     const formatGame = (g, future = false) => {
       if (!g) return null;
 
-      // pick best date source
-      const timestamp = g.strTimestamp || null;
-      const dateEvent = g.dateEvent || null;
-
+      // ---- DATE FIX ----
       let gameDate = "TBD";
-      if (timestamp) gameDate = timestamp;
-      else if (dateEvent) gameDate = dateEvent;
+      if (g.strTimestamp) {
+        gameDate = new Date(g.strTimestamp).toISOString();
+      } else if (g.dateEvent) {
+        gameDate = new Date(g.dateEvent).toISOString();
+      }
 
-      // NFL scoring fix (uses total if normal score missing)
-      const homeScore =
-        !future
-          ? Number(g.intHomeScore ?? g.intHomeScoreTotal ?? null)
-          : null;
+      // ---- NFL SCORING FIX ----
+      let homeScore = null;
+      let awayScore = null;
 
-      const awayScore =
-        !future
-          ? Number(g.intAwayScore ?? g.intAwayScoreTotal ?? null)
-          : null;
+      if (!future) {
+        // home
+        if (g.intHomeScore !== null && g.intHomeScore !== "") {
+          homeScore = Number(g.intHomeScore);
+        } else if (g.intHomeScoreTotal !== null) {
+          homeScore = Number(g.intHomeScoreTotal);
+        }
+
+        // away
+        if (g.intAwayScore !== null && g.intAwayScore !== "") {
+          awayScore = Number(g.intAwayScore);
+        } else if (g.intAwayScoreTotal !== null) {
+          awayScore = Number(g.intAwayScoreTotal);
+        }
+      }
 
       return {
         idEvent: g.idEvent,
         gameDate,
-        status: g.strStatus || (future ? "Scheduled" : "Final"),
+        status: g.strStatus || (future ? "NS" : "FT"),
         home: {
           id: g.idHomeTeam,
           name: g.strHomeTeam,

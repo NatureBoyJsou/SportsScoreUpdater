@@ -3,7 +3,8 @@
 
 // FIX: Use Akamai NHL API endpoint (works on Vercel)
 // const NHL_SCHEDULE_URL = 'https://statsapi.web.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
-const NHL_SCHEDULE_URL = 'https://statsapi-prod.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+const NHL_SCHEDULE_URL = 'https://statsapi.web.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+
 
 const CACHE_TTL_MS = 20 * 1000; // 20 seconds (adjust as needed)
 
@@ -119,3 +120,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err?.toString?.() || String(err) });
   }
 }
+

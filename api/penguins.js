@@ -1,5 +1,5 @@
 // api/steelers.js
-// Fully patched version — correct scoring + correct dates + stable future schedule
+// Fully patched version — correct scoring + correct dates + team logos
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -7,6 +7,102 @@ const CACHE_TTL = 20 * 1000;
 
 let cache = { ts: 0, body: null };
 
+//
+// Fetch a team's logos
+//
+async function fetchTeam(teamId) {
+  if (!teamId) return null;
+
+  try {
+    const res = await fetch(`${API}/lookupteam.php?id=${teamId}`);
+    const json = await res.json();
+    return json?.teams?.[0] || null;
+  } catch (e) {
+    console.error("Team lookup failed:", e);
+    return null;
+  }
+}
+
+//
+// Enhance a formatted game with team logos
+//
+async function enrichGameWithLogos(game) {
+  if (!game) return game;
+
+  const [homeTeam, awayTeam] = await Promise.all([
+    fetchTeam(game.home.id),
+    fetchTeam(game.away.id)
+  ]);
+
+  return {
+    ...game,
+    home: {
+      ...game.home,
+      badge: homeTeam?.strTeamBadge || null,
+      logo: homeTeam?.strTeamLogo || null
+    },
+    away: {
+      ...game.away,
+      badge: awayTeam?.strTeamBadge || null,
+      logo: awayTeam?.strTeamLogo || null
+    }
+  };
+}
+
+//
+// Convert raw API event into normalized object
+//
+function formatGame(g, future = false) {
+  if (!g) return null;
+
+  // ---- DATE FIX ----
+  let gameDate = "TBD";
+  if (g.strTimestamp) {
+    gameDate = new Date(g.strTimestamp).toISOString();
+  } else if (g.dateEvent) {
+    gameDate = new Date(g.dateEvent).toISOString();
+  }
+
+  // ---- NFL SCORING FIX ----
+  let homeScore = null;
+  let awayScore = null;
+
+  if (!future) {
+    if (g.intHomeScore !== null && g.intHomeScore !== "") {
+      homeScore = Number(g.intHomeScore);
+    } else if (g.intHomeScoreTotal !== null) {
+      homeScore = Number(g.intHomeScoreTotal);
+    }
+
+    if (g.intAwayScore !== null && g.intAwayScore !== "") {
+      awayScore = Number(g.intAwayScore);
+    } else if (g.intAwayScoreTotal !== null) {
+      awayScore = Number(g.intAwayScoreTotal);
+    }
+  }
+
+  return {
+    idEvent: g.idEvent,
+    gameDate,
+    status: g.strStatus || (future ? "NS" : "FT"),
+
+    home: {
+      id: g.idHomeTeam,
+      name: g.strHomeTeam,
+      score: homeScore
+    },
+
+    away: {
+      id: g.idAwayTeam,
+      name: g.strAwayTeam,
+      score: awayScore
+    }
+  };
+}
+
+//
+// Main API handler
+//
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -18,70 +114,31 @@ export default async function handler(req, res) {
       return res.status(200).send(cache.body);
     }
 
+    //
     // LAST GAME
+    //
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
-    const lastGame = lastJson?.results?.[0] || null;
+    const lastGameRaw = lastJson?.results?.[0] || null;
+    const lastGame = await enrichGameWithLogos(formatGame(lastGameRaw));
 
+    //
     // NEXT GAMES
+    //
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
-    const nextGames = nextJson?.events || [];
+    const nextGamesRaw = nextJson?.events || [];
 
-    const formatGame = (g, future = false) => {
-      if (!g) return null;
-
-      // ---- DATE FIX ----
-      let gameDate = "TBD";
-      if (g.strTimestamp) {
-        gameDate = new Date(g.strTimestamp).toISOString();
-      } else if (g.dateEvent) {
-        gameDate = new Date(g.dateEvent).toISOString();
-      }
-
-      // ---- NFL SCORING FIX ----
-      let homeScore = null;
-      let awayScore = null;
-
-      if (!future) {
-        // home
-        if (g.intHomeScore !== null && g.intHomeScore !== "") {
-          homeScore = Number(g.intHomeScore);
-        } else if (g.intHomeScoreTotal !== null) {
-          homeScore = Number(g.intHomeScoreTotal);
-        }
-
-        // away
-        if (g.intAwayScore !== null && g.intAwayScore !== "") {
-          awayScore = Number(g.intAwayScore);
-        } else if (g.intAwayScoreTotal !== null) {
-          awayScore = Number(g.intAwayScoreTotal);
-        }
-      }
-
-      return {
-        idEvent: g.idEvent,
-        gameDate,
-        status: g.strStatus || (future ? "NS" : "FT"),
-        home: {
-          id: g.idHomeTeam,
-          name: g.strHomeTeam,
-          score: homeScore,
-        },
-        away: {
-          id: g.idAwayTeam,
-          name: g.strAwayTeam,
-          score: awayScore,
-        }
-      };
-    };
+    const nextFormatted = await Promise.all(
+      nextGamesRaw.map(g => enrichGameWithLogos(formatGame(g, true)))
+    );
 
     const payload = {
       team: "Pittsburgh Steelers",
       fetchedAt: new Date().toISOString(),
-      latestGame: formatGame(lastGame),
-      nextGame: formatGame(nextGames[0], true),
-      upcomingGames: nextGames.map(g => formatGame(g, true)),
+      latestGame: lastGame,
+      nextGame: nextFormatted[0] || null,
+      upcomingGames: nextFormatted
     };
 
     const body = JSON.stringify(payload);
@@ -91,6 +148,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Steelers API Error:", err);
+
     return res.status(500).json({
       error: "Server Error",
       details: err.message || String(err)

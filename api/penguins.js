@@ -1,11 +1,13 @@
 // api/steelers.js
-// Vercel serverless function using TheSportsDB for Pittsburgh Steelers
+// Vercel serverless function using TheSportsDB for Pittsburgh Steelers only
+
+const STEELERS_ID = "134922";
 
 const LAST_EVENTS_URL =
-  "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=134922";
+  `https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=${STEELERS_ID}`;
 
 const NEXT_EVENTS_URL =
-  "https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=134922";
+  `https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${STEELERS_ID}`;
 
 const CACHE_TTL_MS = 20 * 1000; // 20 seconds
 
@@ -34,12 +36,18 @@ export default async function handler(req, res) {
     const nextRes = await fetch(NEXT_EVENTS_URL);
     const nextData = await nextRes.json();
 
-    const lastEvents = lastData.results || [];
-    const nextEvents = nextData.events || [];
+    // ALWAYS ensure Steelers-only (SportsDB sometimes returns extra events)
+    const lastEvents = (lastData.results || []).filter(
+      ev => ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
+    );
 
+    const nextEvents = (nextData.events || []).filter(
+      ev => ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
+    );
+
+    // Most recent game
     const lastGame = lastEvents.length ? lastEvents[0] : null;
 
-    // Convert last game into your frontend structure
     const latestGame = lastGame
       ? {
           gameDate: lastGame.dateEvent,
@@ -57,7 +65,7 @@ export default async function handler(req, res) {
         }
       : null;
 
-    // Upcoming next 10 games
+    // Future schedule (next 10 NFL games)
     const upcomingGames = nextEvents.slice(0, 10).map(ev => ({
       gameDate: ev.dateEvent,
       status: ev.strStatus || "Scheduled",
@@ -73,7 +81,7 @@ export default async function handler(req, res) {
       }
     }));
 
-    // Final payload
+    // Response body
     const payload = {
       fetchedAt: new Date().toISOString(),
       latestGame,
@@ -82,7 +90,7 @@ export default async function handler(req, res) {
 
     const body = JSON.stringify(payload);
 
-    // Save in-memory cache
+    // Cache
     _cache = { ts: now, body };
 
     // Send response

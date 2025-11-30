@@ -1,5 +1,5 @@
 // api/steelers.js
-// NFL version with ESPN logos only (fully patched, full-season schedule)
+// NFL version with ESPN logos only (fully patched)
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers (TheSportsDB ID)
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -125,44 +125,25 @@ export default async function handler(req, res) {
       return res.status(200).send(cache.body);
     }
 
-    // Fetch full season
-    const season = "2024"; // update dynamically if needed
-    const seasonRes = await fetch(`${API}/eventsseason.php?id=${TEAM_ID}&s=${season}`);
-    const seasonJson = await seasonRes.json();
-    const seasonGamesRaw = seasonJson?.events || [];
+    // LAST GAME
+    const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
+    const lastJson = await lastRes.json();
+    const lastGameRaw = lastJson?.results?.[0] || null;
+    const lastGame = formatGame(lastGameRaw);
 
-    const nowIso = new Date().toISOString();
+    // UPCOMING
+    const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
+    const nextJson = await nextRes.json();
+    const nextGamesRaw = nextJson?.events || [];
 
-    const upcomingRaw = seasonGamesRaw.filter(g => {
-      const ts = g.strTimestamp || g.dateEvent;
-      return ts && new Date(ts).toISOString() >= nowIso;
-    });
-
-    const pastRaw = seasonGamesRaw.filter(g => {
-      const ts = g.strTimestamp || g.dateEvent;
-      return ts && new Date(ts).toISOString() < nowIso;
-    });
-
-    const upcomingGames = upcomingRaw.map(g => formatGame(g, true));
-    const pastGames = pastRaw.map(g => formatGame(g, false));
-
-    const latestGame = pastGames[pastGames.length - 1] || null;
-    const nextGame = upcomingGames[0] || null;
-
-    const allGames = seasonGamesRaw.map(g =>
-      formatGame(
-        g,
-        new Date(g.strTimestamp || g.dateEvent).toISOString() >= nowIso
-      )
-    );
+    const nextFormatted = nextGamesRaw.map(g => formatGame(g, true));
 
     const payload = {
       team: "Pittsburgh Steelers",
       fetchedAt: new Date().toISOString(),
-      latestGame,
-      nextGame,
-      upcomingGames,
-      allGames
+      latestGame: lastGame,
+      nextGame: nextFormatted[0] || null,
+      upcomingGames: nextFormatted
     };
 
     const body = JSON.stringify(payload);

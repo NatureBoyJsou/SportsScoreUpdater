@@ -1,5 +1,5 @@
 // api/steelers.js
-// Fully patched version — correct scoring + correct dates + team logos
+// Fully patched version — correct scoring + correct dates + correct team logo fields
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -25,7 +25,7 @@ async function fetchTeam(teamId) {
 
 //
 // Enhance a formatted game with team logos
-//
+// *** PATCHED to return strTeamBadge + strTeamLogo ***
 async function enrichGameWithLogos(game) {
   if (!game) return game;
 
@@ -38,13 +38,13 @@ async function enrichGameWithLogos(game) {
     ...game,
     home: {
       ...game.home,
-      badge: homeTeam?.strTeamBadge || null,
-      logo: homeTeam?.strTeamLogo || null
+      strTeamBadge: homeTeam?.strTeamBadge || null,
+      strTeamLogo: homeTeam?.strTeamLogo || null
     },
     away: {
       ...game.away,
-      badge: awayTeam?.strTeamBadge || null,
-      logo: awayTeam?.strTeamLogo || null
+      strTeamBadge: awayTeam?.strTeamBadge || null,
+      strTeamLogo: awayTeam?.strTeamLogo || null
     }
   };
 }

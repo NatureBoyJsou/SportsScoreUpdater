@@ -1,12 +1,10 @@
 // api/penguins.js
-// Vercel serverless function (Node.js). Uses global cache to reduce NHL API calls.
+// Vercel serverless function using TheSportsDB instead of the NHL API.
 
-// FIX: Use Akamai NHL API endpoint (works on Vercel)
-// const NHL_SCHEDULE_URL = 'https://statsapi.web.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
-const NHL_SCHEDULE_URL = 'https://statsapi.nhl.com/api/v1/schedule?teamId=5&expand=schedule.linescore';
+const LAST_EVENTS_URL = "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=134861";
+const NEXT_EVENTS_URL = "https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=134861";
 
-
-const CACHE_TTL_MS = 20 * 1000; // 20 seconds (adjust as needed)
+const CACHE_TTL_MS = 20 * 1000; // 20 seconds
 
 let _cache = {
   ts: 0,
@@ -17,108 +15,83 @@ export default async function handler(req, res) {
   try {
     const now = Date.now();
 
-    // Serve cached response if fresh
+    // Serve cached response if still fresh
     if (_cache.body && (now - _cache.ts) < CACHE_TTL_MS) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Headers', '*');
-      res.setHeader('Content-Type', 'application/json');
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "*");
+      res.setHeader("Content-Type", "application/json");
       return res.status(200).send(_cache.body);
     }
 
-    // Fetch from NHL API server-side
-    const r = await fetch(NHL_SCHEDULE_URL, { method: 'GET' });
-    if (!r.ok) {
-      const text = await r.text();
-      console.error('NHL fetch error', r.status, text);
-      return res
-        .status(502)
-        .json({ error: 'Failed to fetch NHL API', status: r.status, body: text });
-    }
+    // Fetch last game
+    const lastRes = await fetch(LAST_EVENTS_URL);
+    const lastData = await lastRes.json();
 
-    const data = await r.json();
+    // Fetch next games
+    const nextRes = await fetch(NEXT_EVENTS_URL);
+    const nextData = await nextRes.json();
 
-    // Simplify and compute latest game + upcoming games
-    const dates = data.dates || [];
+    const lastEvents = lastData.results || [];
+    const nextEvents = nextData.events || [];
 
-    // Build list of games (flatten)
-    const games = [];
-    for (const day of dates) {
-      for (const g of (day.games || [])) {
-        games.push(g);
+    // Latest game (most recent completed)
+    const lastGame = lastEvents.length ? lastEvents[0] : null;
+
+    // Convert into the simplified format your frontend expects
+    const latestGame = lastGame
+      ? {
+          gameDate: lastGame.dateEvent,
+          status: "Final",
+          home: {
+            id: lastGame.idHomeTeam,
+            name: lastGame.strHomeTeam,
+            score: Number(lastGame.intHomeScore)
+          },
+          away: {
+            id: lastGame.idAwayTeam,
+            name: lastGame.strAwayTeam,
+            score: Number(lastGame.intAwayScore)
+          }
+        }
+      : null;
+
+    // Upcoming games (next 10)
+    const upcomingGames = nextEvents.slice(0, 10).map(ev => ({
+      gameDate: ev.dateEvent,
+      status: ev.strStatus || "Scheduled",
+      home: {
+        id: ev.idHomeTeam,
+        name: ev.strHomeTeam,
+        score: null
+      },
+      away: {
+        id: ev.idAwayTeam,
+        name: ev.strAwayTeam,
+        score: null
       }
-    }
+    }));
 
-    // Sort games by date
-    games.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
-
-    // Find latest game (not Scheduled)
-    let latestGame = null;
-    for (let i = games.length - 1; i >= 0; i--) {
-      const s = games[i].status?.detailedState || '';
-      if (s && s !== 'Scheduled') {
-        latestGame = games[i];
-        break;
-      }
-    }
-
-    // If none found, fallback to last game
-    if (!latestGame && games.length) latestGame = games[games.length - 1];
-
-    // Find upcoming future games
-    const upcoming = games
-      .filter(g => (new Date(g.gameDate) >= new Date()))
-      .slice(0, 10)
-      .map(g => ({
-        gameDate: g.gameDate,
-        home: {
-          id: g.teams.home.team.id,
-          name: g.teams.home.team.name,
-          score: g.teams.home.score
-        },
-        away: {
-          id: g.teams.away.team.id,
-          name: g.teams.away.team.name,
-          score: g.teams.away.score
-        },
-        status: g.status?.detailedState || g.status?.abstractGameState || ''
-      }));
-
-    // Build response payload
+    // Final payload
     const payload = {
       fetchedAt: new Date().toISOString(),
-      latestGame: latestGame ? {
-        gameDate: latestGame.gameDate,
-        status: latestGame.status?.detailedState || latestGame.status?.abstractGameState || '',
-        home: {
-          id: latestGame.teams.home.team.id,
-          name: latestGame.teams.home.team.name,
-          score: latestGame.teams.home.score
-        },
-        away: {
-          id: latestGame.teams.away.team.id,
-          name: latestGame.teams.away.team.name,
-          score: latestGame.teams.away.score
-        }
-      } : null,
-      upcomingGames: upcoming
+      latestGame,
+      upcomingGames
     };
 
     const body = JSON.stringify(payload);
 
-    // Cache result
+    // Store in cache
     _cache = { ts: now, body };
 
-    // Return response
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json');
+    // Return to client
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Content-Type", "application/json");
     return res.status(200).send(body);
 
   } catch (err) {
-    console.error('Handler error', err);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.status(500).json({ error: err?.toString?.() || String(err) });
+    console.error("Handler error", err);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(500).json({ error: err?.toString() || String(err) });
   }
 }
-
-

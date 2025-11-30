@@ -1,72 +1,90 @@
 // api/steelers.js
+// Fully rewritten Vercel serverless function for Pittsburgh Steelers
 
-const STEELERS_ID = "134925";
+const TEAM_ID = "134925"; // Pittsburgh Steelers (confirmed correct ID)
+const API = "https://www.thesportsdb.com/api/v1/json/3";
 
-const LAST_EVENTS_URL = `https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=${STEELERS_ID}`;
-const NEXT_EVENTS_URL = `https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${STEELERS_ID}`;
-
-const CACHE_TTL_MS = 20 * 1000;
-
-let _cache = { ts: 0, body: null };
+const CACHE_TTL = 20 * 1000; // 20 seconds
+let cache = { ts: 0, body: null };
 
 export default async function handler(req, res) {
   try {
+    // CORS headers (required by Vercel frontends)
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Content-Type", "application/json");
+
     const now = Date.now();
-    if (_cache.body && now - _cache.ts < CACHE_TTL_MS) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.status(200).send(_cache.body);
+
+    // Serve cache if fresh
+    if (cache.body && now - cache.ts < CACHE_TTL) {
+      return res.status(200).send(cache.body);
     }
 
-    const [lastRes, nextRes] = await Promise.all([
-      fetch(LAST_EVENTS_URL),
-      fetch(NEXT_EVENTS_URL)
-    ]);
-    const lastData = await lastRes.json();
-    const nextData = await nextRes.json();
+    //
+    // 1️⃣ Fetch last Steelers game
+    //
+    const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
+    const lastJson = await lastRes.json();
+    const lastGame = lastJson?.results?.[0] || null;
 
-    console.log("DEBUG lastData:", lastData);
-    console.log("DEBUG nextData:", nextData);
+    //
+    // 2️⃣ Fetch next Steelers game
+    //
+    const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
+    const nextJson = await nextRes.json();
+    const nextGame = nextJson?.events?.[0] || null;
 
-    const lastEvents = (lastData?.results || []).filter(ev =>
-      ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
-    );
-    const nextEvents = (nextData?.events || []).filter(ev =>
-      ev.idHomeTeam === STEELERS_ID || ev.idAwayTeam === STEELERS_ID
-    );
+    //
+    // 3️⃣ Clean format (always return consistent structure)
+    //
+    const formatGame = (g, isFuture = false) => {
+      if (!g) return null;
+      return {
+        idEvent: g.idEvent,
+        date: g.dateEvent,
+        time: g.strTimeLocal || g.strTime || null,
+        timestamp: g.strTimestamp || null,
+        status: g.strStatus || (isFuture ? "Scheduled" : "Final"),
+        home: {
+          id: g.idHomeTeam,
+          name: g.strHomeTeam,
+          score: isFuture ? null : Number(g.intHomeScore || null),
+          badge: g.strHomeTeamBadge || null
+        },
+        away: {
+          id: g.idAwayTeam,
+          name: g.strAwayTeam,
+          score: isFuture ? null : Number(g.intAwayScore || null),
+          badge: g.strAwayTeamBadge || null
+        },
+        venue: g.strVenue || null,
+        city: g.strCity || null,
+        season: g.strSeason || null
+      };
+    };
 
-    const nowDate = new Date();
+    const payload = {
+      team: "Pittsburgh Steelers",
+      updated: new Date().toISOString(),
+      lastGame: formatGame(lastGame, false),
+      nextGame: formatGame(nextGame, true),
+      upcomingAvailable: Boolean(nextGame)
+    };
 
-    // find next or today game
-    const futureGames = nextEvents
-      .filter(ev => new Date(ev.dateEvent) >= nowDate)
-      .sort((a, b) => new Date(a.dateEvent) - new Date(b.dateEvent));
-
-    let mainGame = null;
-    if (futureGames.length > 0) {
-      const g = futureGames[0];
-      mainGame = { /* build from g */ };
-    } else if (lastEvents.length > 0) {
-      const g = lastEvents[0];
-      mainGame = { /* build from g */ };
-    }
-
-    const upcomingGames = futureGames.slice(1).map(ev => ({
-      gameDate: ev.dateEvent,
-      home: { name: ev.strHomeTeam, score: null },
-      away: { name: ev.strAwayTeam, score: null },
-      status: ev.strStatus || "Scheduled"
-    }));
-
-    const payload = { fetchedAt: new Date().toISOString(), mainGame, upcomingGames };
     const body = JSON.stringify(payload);
 
-    _cache = { ts: now, body };
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // Update cache
+    cache = { ts: now, body };
+
     return res.status(200).send(body);
 
   } catch (err) {
-    console.error("Handler error", err);
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    return res.status(500).json({ error: err.toString() });
+    console.error("Steelers API ERROR:", err);
+
+    res.status(500).json({
+      error: "Server Error",
+      details: err.message || String(err)
+    });
   }
 }

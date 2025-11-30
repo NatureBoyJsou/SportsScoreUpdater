@@ -1,25 +1,30 @@
 // api/steelers.js
 // Steelers-only API using TheSportsDB + correct date parsing
 
-const TEAM_ID = "134925"; // Pittsburgh Steelers
-const API = "https://www.thesportsdb.com/api/v1/json/123";
+const TEAM_ID = "134925"; // ✅ Correct Pittsburgh Steelers ID
+const API = "https://www.thesportsdb.com/api/v1/json/3"; // ✅ Correct public API key
 const CACHE_TTL = 20 * 1000;
 
 let cache = { ts: 0, body: null };
 
 function buildDate(g) {
-  // Past games
+  // Past games - use strTimestamp first
   if (g.strTimestamp) {
-    return new Date(g.strTimestamp);
+    const d = new Date(g.strTimestamp);
+    if (!isNaN(d)) return d;
   }
 
-  // Future games
+  // Future games (scheduled)
   if (g.dateEvent && g.strTime) {
-    return new Date(`${g.dateEvent}T${g.strTime}`);
+    const dt = new Date(`${g.dateEvent}T${g.strTime}`);
+    if (!isNaN(dt)) return dt;
   }
 
-  // Last fallback
-  if (g.dateEvent) return new Date(g.dateEvent);
+  // Basic date fallback
+  if (g.dateEvent) {
+    const dt2 = new Date(g.dateEvent);
+    if (!isNaN(dt2)) return dt2;
+  }
 
   return null;
 }
@@ -27,21 +32,25 @@ function buildDate(g) {
 function formatGame(g, future = false) {
   if (!g) return null;
 
+  const parsed = buildDate(g);
+
   return {
     idEvent: g.idEvent,
-    date: g.dateEvent || null,
-    time: g.strTime || null,
-    parsedDate: buildDate(g),
-    status: g.strStatus || (future ? "Scheduled" : "Final"),
+    rawDate: g.dateEvent || null,
+    rawTime: g.strTime || null,
+    parsedDate: parsed ? parsed.toISOString() : null,
+    status: g.strStatus || (future ? "NS" : "FT"),
+
     home: {
       id: g.idHomeTeam,
       name: g.strHomeTeam,
-      score: future ? null : Number(g.intHomeScore ?? null)
+      score: future ? null : (g.intHomeScore !== null ? Number(g.intHomeScore) : null)
     },
+
     away: {
       id: g.idAwayTeam,
       name: g.strAwayTeam,
-      score: future ? null : Number(g.intAwayScore ?? null)
+      score: future ? null : (g.intAwayScore !== null ? Number(g.intAwayScore) : null)
     }
   };
 }
@@ -54,14 +63,17 @@ export default async function handler(req, res) {
   try {
     const now = Date.now();
 
+    // Cache
     if (cache.body && now - cache.ts < CACHE_TTL) {
       return res.status(200).send(cache.body);
     }
 
+    // Fetch last result
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
     const lastGame = lastJson?.results?.[0] || null;
 
+    // Fetch next games
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
     const nextGames = nextJson?.events || [];

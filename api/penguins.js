@@ -1,10 +1,9 @@
-// api/steelers.js
-// Fully patched version — correct scoring + correct dates + stable future schedule
+// api/steelers.js — Sleeper API Version
 
-const TEAM_ID = "134924"; // Pittsburgh Steelers
-const API = "https://www.thesportsdb.com/api/v1/json/123";
+const TEAM = "PIT";     // Steelers abbreviation used by Sleeper
+const YEAR = 2025;
+
 const CACHE_TTL = 20 * 1000;
-
 let cache = { ts: 0, body: null };
 
 export default async function handler(req, res) {
@@ -14,89 +13,91 @@ export default async function handler(req, res) {
 
   try {
     const now = Date.now();
+
     if (cache.body && now - cache.ts < CACHE_TTL) {
       return res.status(200).send(cache.body);
     }
 
-    // LAST GAME
-    const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
-    const lastJson = await lastRes.json();
-    const lastGame = lastJson?.results?.[0] || null;
+    //
+    // 1) Fetch full 2025 schedule
+    //
+    const scheduleRes = await fetch(
+      `https://api.sleeper.com/schedule/nfl/regular/${YEAR}`
+    );
+    const schedule = await scheduleRes.json();
 
-    // NEXT GAMES
-    const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
-    const nextJson = await nextRes.json();
-    const nextGames = nextJson?.events || [];
+    //
+    // 2) Fetch scores week-by-week
+    //
+    const scores = {};
+    for (let week = 1; week <= 18; week++) {
+      const sRes = await fetch(
+        `https://api.sleeper.com/scores/nfl/${YEAR}/${week}`
+      );
+      scores[week] = await sRes.json();
+    }
 
-    const formatGame = (g, future = false) => {
-      if (!g) return null;
+    //
+    // 3) Format schedule into Steelers games only
+    //
+    const games = schedule
+      .filter(g => g.away === TEAM || g.home === TEAM)
+      .map(g => {
+        const home = g.home;
+        const away = g.away;
+        const week = g.week;
 
-      // ---- DATE FIX ----
-      let gameDate = "TBD";
-      if (g.strTimestamp) {
-        gameDate = new Date(g.strTimestamp).toISOString();
-      } else if (g.dateEvent) {
-        gameDate = new Date(g.dateEvent).toISOString();
-      }
+        // lookup score for this game
+        const scoreWeek = scores[week] || [];
+        const found = scoreWeek.find(s =>
+          s.home === home && s.away === away
+        );
 
-      // ---- NFL SCORING FIX ----
-      let homeScore = null;
-      let awayScore = null;
+        return {
+          week,
+          gameDate: g.start_time ? new Date(g.start_time).toISOString() : null,
+          status: found ? "FT" : "NS",
+          home: {
+            name: home,
+            score: found ? found.home_score : null
+          },
+          away: {
+            name: away,
+            score: found ? found.away_score : null
+          }
+        };
+      });
 
-      if (!future) {
-        // home
-        if (g.intHomeScore !== null && g.intHomeScore !== "") {
-          homeScore = Number(g.intHomeScore);
-        } else if (g.intHomeScoreTotal !== null) {
-          homeScore = Number(g.intHomeScoreTotal);
-        }
+    // latest completed game
+    const latestGame = [...games]
+      .filter(g => g.status === "FT")
+      .sort((a, b) => new Date(b.gameDate) - new Date(a.gameDate))[0] || null;
 
-        // away
-        if (g.intAwayScore !== null && g.intAwayScore !== "") {
-          awayScore = Number(g.intAwayScore);
-        } else if (g.intAwayScoreTotal !== null) {
-          awayScore = Number(g.intAwayScoreTotal);
-        }
-      }
-
-      return {
-        idEvent: g.idEvent,
-        gameDate,
-        status: g.strStatus || (future ? "NS" : "FT"),
-        home: {
-          id: g.idHomeTeam,
-          name: g.strHomeTeam,
-          score: homeScore,
-        },
-        away: {
-          id: g.idAwayTeam,
-          name: g.strAwayTeam,
-          score: awayScore,
-        }
-      };
-    };
+    // future games
+    const upcomingGames = games
+      .filter(g => g.status === "NS")
+      .sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
     const payload = {
+      source: "Sleeper NFL",
       team: "Pittsburgh Steelers",
-      fetchedAt: new Date().toISOString(),
-      latestGame: formatGame(lastGame),
-      nextGame: formatGame(nextGames[0], true),
-      upcomingGames: nextGames.map(g => formatGame(g, true)),
+      year: YEAR,
+      updated: new Date().toISOString(),
+      latestGame,
+      nextGame: upcomingGames[0] || null,
+      upcomingGames
     };
 
     const body = JSON.stringify(payload);
     cache = { ts: now, body };
 
-    return res.status(200).send(body);
+    res.status(200).send(body);
 
   } catch (err) {
-    console.error("Steelers API Error:", err);
-    return res.status(500).json({
+    console.error("Sleeper API Steelers Error:", err);
+    res.status(500).json({
       error: "Server Error",
       details: err.message || String(err)
     });
   }
 }
-
-
-

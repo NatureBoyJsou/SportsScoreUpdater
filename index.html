@@ -3,23 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pittsburgh Steelers — Latest</title>
+  <title>Pittsburgh Penguins — Latest</title>
 
   <style>
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
-    h1 { margin:6px 0 12px; font-size:22px; }
-    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:340px; }
-    .team { display:inline-block; width:140px; vertical-align:middle; }
-    .score { font-size:32px; display:inline-block; width:70px; vertical-align:middle; font-weight:bold; }
+    h1 { margin:6px 0 12px; font-size:20px; }
+    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; }
+    .team { display:inline-block; width:130px; vertical-align:middle; }
+    .score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
     .status { margin-top:8px; font-size:14px; color:#ccc; }
     #schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
-    .gameRow { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.08); }
+    .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
     small { color:#bbb; }
   </style>
 </head>
 
 <body>
-  <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
+  <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
 
   <div id="main" class="card">
     <div id="loading">Loading…</div>
@@ -28,13 +28,13 @@
       <div id="latestGameContainer"></div>
       <div class="status"><small id="fetchedAt"></small></div>
 
-      <h3 style="margin-top:16px; margin-bottom:6px; font-size:18px;">Upcoming Games</h3>
+      <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
       <div id="schedule"></div>
     </div>
   </div>
 
   <script>
-    const API = "/api/steelers";
+    const API = '/api/penguins';
 
     function safeDate(d) {
       const dt = new Date(d);
@@ -42,77 +42,86 @@
     }
 
     async function render() {
-      const loading = document.getElementById("loading");
-      const content = document.getElementById("content");
-      const latestContainer = document.getElementById("latestGameContainer");
-      const scheduleDiv = document.getElementById("schedule");
-      const fetchedEl = document.getElementById("fetchedAt");
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const latestContainer = document.getElementById('latestGameContainer');
+      const scheduleDiv = document.getElementById('schedule');
+      const fetchedEl = document.getElementById('fetchedAt');
 
-      loading.style.display = "block";
-      content.style.display = "none";
+      loading.style.display = 'block';
+      content.style.display = 'none';
 
       try {
         const res = await fetch(API);
         const json = await res.json();
 
-        loading.style.display = "none";
-        content.style.display = "block";
+        loading.style.display = 'none';
+        content.style.display = 'block';
 
-        fetchedEl.textContent = "Updated: " + json.updated;
+        fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-        // ========== LATEST GAME ==========
+        // ---------------------------
+        // LATEST GAME — FIX APPLIED
+        // ---------------------------
         const latest = json.latestGame;
 
         if (latest) {
           const dt = safeDate(latest.gameDate);
 
+          const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
+          const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
+
           latestContainer.innerHTML = `
             <div>
-              <div class="team"><strong>${latest.away.name}</strong></div>
-              <div class="score">${latest.away.score ?? "-"}</div>
+              <div class="team"><strong>${latest.away?.name || "?"}</strong></div>
+              <div class="score">${awayScore}</div>
 
-              <div class="team" style="text-align:right;"><strong>${latest.home.name}</strong></div>
+              <div class="team" style="text-align:right;"><strong>${latest.home?.name || "?"}</strong></div>
+              <div class="score">${homeScore}</div>
 
               <div style="clear:both;"></div>
 
               <div class="status">
-                Week ${latest.week} — ${latest.status}
-                <br>
-                ${dt ? dt.toLocaleString() : "Invalid Date"}
+                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
               </div>
             </div>
           `;
         } else {
-          latestContainer.innerHTML = "<div>No recent game found.</div>";
+          latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        // ========== UPCOMING GAMES ==========
+        // ---------------------------
+        // UPCOMING GAMES — FIX APPLIED
+        // ---------------------------
         scheduleDiv.innerHTML = "";
-        let upcoming = json.upcomingGames || [];
+        let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
-        upcoming.forEach(g => {
-          const dt = safeDate(g.gameDate);
-          const row = document.createElement("div");
+        // filter invalid dates
+        upcoming = upcoming.filter(g => safeDate(g.gameDate));
 
-          row.className = "gameRow";
-          row.innerHTML = `
-            <div><strong>${g.away.name}</strong> @ <strong>${g.home.name}</strong></div>
-            <div><small>
-              Week ${g.week} — ${g.status}<br>
-              ${dt ? dt.toLocaleString() : "Invalid Date"}
-            </small></div>
-          `;
-
-          scheduleDiv.appendChild(row);
-        });
+        // sort chronologically (important!)
+        upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
-          scheduleDiv.innerHTML = '<div class="gameRow">No upcoming games found.</div>';
+          scheduleDiv.innerHTML = '<div class="gameRow">No valid upcoming games found.</div>';
+        } else {
+          upcoming.forEach(g => {
+            const dt = safeDate(g.gameDate);
+            const row = document.createElement('div');
+
+            row.className = 'gameRow';
+            row.innerHTML = `
+              <div><strong>${g.away?.name || "?"}</strong> @ <strong>${g.home?.name || "?"}</strong></div>
+              <div><small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small></div>
+            `;
+
+            scheduleDiv.appendChild(row);
+          });
         }
 
       } catch (err) {
-        loading.style.display = "none";
-        content.style.display = "block";
+        loading.style.display = 'none';
+        content.style.display = 'block';
 
         latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
         scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;

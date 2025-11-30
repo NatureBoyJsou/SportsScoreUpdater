@@ -9,8 +9,26 @@
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
     h1 { margin:6px 0 12px; font-size:20px; }
     .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; }
+
     .team { display:inline-block; width:130px; vertical-align:middle; }
     .score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
+
+    .teamLogo {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto 4px auto;
+    }
+
+    .teamLogoSmall {
+      width: 30px;
+      height: 30px;
+      object-fit: contain;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
     .status { margin-top:8px; font-size:14px; color:#ccc; }
     #schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
     .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
@@ -61,7 +79,7 @@
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
         // ---------------------------
-        // LATEST GAME — FIX APPLIED
+        // LATEST GAME (WITH LOGOS)
         // ---------------------------
         const latest = json.latestGame;
 
@@ -73,10 +91,18 @@
 
           latestContainer.innerHTML = `
             <div>
-              <div class="team"><strong>${latest.away?.name || "?"}</strong></div>
+              <div class="team">
+                <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
+                <strong>${latest.away?.name || "?"}</strong>
+              </div>
+
               <div class="score">${awayScore}</div>
 
-              <div class="team" style="text-align:right;"><strong>${latest.home?.name || "?"}</strong></div>
+              <div class="team" style="text-align:right;">
+                <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
+                <strong>${latest.home?.name || "?"}</strong>
+              </div>
+
               <div class="score">${homeScore}</div>
 
               <div style="clear:both;"></div>
@@ -91,7 +117,7 @@
         }
 
         // ---------------------------
-        // UPCOMING GAMES — FIX APPLIED
+        // UPCOMING GAMES (WITH LOGOS)
         // ---------------------------
         scheduleDiv.innerHTML = "";
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
@@ -99,7 +125,7 @@
         // filter invalid dates
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
 
-        // sort chronologically (important!)
+        // sort chronologically
         upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
@@ -108,11 +134,22 @@
           upcoming.forEach(g => {
             const dt = safeDate(g.gameDate);
             const row = document.createElement('div');
-
             row.className = 'gameRow';
+
             row.innerHTML = `
-              <div><strong>${g.away?.name || "?"}</strong> @ <strong>${g.home?.name || "?"}</strong></div>
-              <div><small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small></div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
+                <strong>${g.away?.name || "?"}</strong>
+
+                <span style="opacity:0.7; margin:0 8px;">@</span>
+
+                <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
+                <strong>${g.home?.name || "?"}</strong>
+              </div>
+
+              <div>
+                <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
+              </div>
             `;
 
             scheduleDiv.appendChild(row);

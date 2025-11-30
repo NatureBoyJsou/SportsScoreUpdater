@@ -1,5 +1,5 @@
 // api/steelers.js
-// Fully patched version — correct scoring + correct dates + team logos
+// Fully patched version — correct scoring + correct dates + ESPN team logos (no API lookups)
 
 const TEAM_ID = "134925"; // Pittsburgh Steelers
 const API = "https://www.thesportsdb.com/api/v1/json/123";
@@ -7,51 +7,24 @@ const CACHE_TTL = 20 * 1000;
 
 let cache = { ts: 0, body: null };
 
-//
-// Fetch a team's logos
-//
-async function fetchTeam(teamId) {
-  if (!teamId) return null;
+// ---------------------------------------------
+// LOCAL NFL LOGO MAP (ESPN CDN — always works)
+// ---------------------------------------------
+const NFL_LOGOS = {
+  "134925": "https://a.espncdn.com/i/teamlogos/nfl/500/pit.png", // Steelers
+  "134907": "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png", // Bills
+  "134914": "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png", // Bengals
+  "134908": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png", // Bears
+  "134916": "https://a.espncdn.com/i/teamlogos/nfl/500/cle.png", // Browns
+  "134917": "https://a.espncdn.com/i/teamlogos/nfl/500/bal.png", // Ravens
+  "134922": "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png", // Rams
+  "134932": "https://a.espncdn.com/i/teamlogos/nfl/500/sf.png", // 49ers
+  // Add more as your schedule expands
+};
 
-  try {
-    const res = await fetch(`${API}/lookupteam.php?id=${teamId}`);
-    const json = await res.json();
-    return json?.teams?.[0] || null;
-  } catch (e) {
-    console.error("Team lookup failed:", e);
-    return null;
-  }
-}
-
-//
-// Enhance a formatted game with team logos
-//
-async function enrichGameWithLogos(game) {
-  if (!game) return game;
-
-  const [homeTeam, awayTeam] = await Promise.all([
-    fetchTeam(game.home.id),
-    fetchTeam(game.away.id)
-  ]);
-
-  return {
-    ...game,
-    home: {
-      ...game.home,
-      badge: homeTeam?.strTeamBadge || null,
-      logo: homeTeam?.strTeamLogo || null
-    },
-    away: {
-      ...game.away,
-      badge: awayTeam?.strTeamBadge || null,
-      logo: awayTeam?.strTeamLogo || null
-    }
-  };
-}
-
-//
-// Convert raw API event into normalized object
-//
+// ---------------------------------------------
+// Format single game
+// ---------------------------------------------
 function formatGame(g, future = false) {
   if (!g) return null;
 
@@ -89,20 +62,39 @@ function formatGame(g, future = false) {
     home: {
       id: g.idHomeTeam,
       name: g.strHomeTeam,
-      score: homeScore
+      score: homeScore,
     },
 
     away: {
       id: g.idAwayTeam,
       name: g.strAwayTeam,
-      score: awayScore
-    }
+      score: awayScore,
+    },
   };
 }
 
-//
+// ---------------------------------------------
+// Add LOGOS locally (no fetch involved)
+// ---------------------------------------------
+function enrichGameWithLogosLocal(game) {
+  if (!game) return game;
+
+  return {
+    ...game,
+    home: {
+      ...game.home,
+      logo: NFL_LOGOS[game.home.id] || null,
+    },
+    away: {
+      ...game.away,
+      logo: NFL_LOGOS[game.away.id] || null,
+    },
+  };
+}
+
+// ---------------------------------------------
 // Main API handler
-//
+// ---------------------------------------------
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -120,25 +112,25 @@ export default async function handler(req, res) {
     const lastRes = await fetch(`${API}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
     const lastGameRaw = lastJson?.results?.[0] || null;
-    const lastGame = await enrichGameWithLogos(formatGame(lastGameRaw));
+    const lastGame = enrichGameWithLogosLocal(formatGame(lastGameRaw));
 
     //
-    // NEXT GAMES
+    // UPCOMING GAMES
     //
     const nextRes = await fetch(`${API}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
     const nextGamesRaw = nextJson?.events || [];
 
-    const nextFormatted = await Promise.all(
-      nextGamesRaw.map(g => enrichGameWithLogos(formatGame(g, true)))
+    const upcoming = nextGamesRaw.map(g =>
+      enrichGameWithLogosLocal(formatGame(g, true))
     );
 
     const payload = {
       team: "Pittsburgh Steelers",
       fetchedAt: new Date().toISOString(),
       latestGame: lastGame,
-      nextGame: nextFormatted[0] || null,
-      upcomingGames: nextFormatted
+      nextGame: upcoming[0] || null,
+      upcomingGames: upcoming,
     };
 
     const body = JSON.stringify(payload);
@@ -151,7 +143,7 @@ export default async function handler(req, res) {
 
     return res.status(500).json({
       error: "Server Error",
-      details: err.message || String(err)
+      details: err.message || String(err),
     });
   }
 }

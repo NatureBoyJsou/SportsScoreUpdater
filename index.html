@@ -2,90 +2,158 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pittsburgh Steelers — Latest</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Sports Dashboard</title>
 
   <style>
-    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:18px; text-align:center; }
-    h1 { margin:6px 0 12px; font-size:20px; }
-    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #000;
+      color: #fff;
+    }
 
-    .team { display:inline-block; width:130px; vertical-align:middle; }
+    #scaleContainer {
+      width: 1024px;
+      height: 600px;
+      transform-origin: 0 0;
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: scale(calc(100vw / 1024), calc(100vh / 600));
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: none;
+    }
+
+    .active { display: block; }
+
+    h1 { margin:6px 0 12px; font-size:20px; text-align:center; }
+    .card { background:#111; padding:14px; border-radius:10px; display:inline-block; min-width:320px; text-align:center; }
+
+    .team { display:inline-block; width:130px; vertical-align:middle; text-align:center; }
     .score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
-
-    .teamLogo {
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
-      display: block;
-      margin: 0 auto 4px auto;
-    }
-
-    .teamLogoSmall {
-      width: 30px;
-      height: 30px;
-      object-fit: contain;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-
+    .teamLogo { width: 48px; height: 48px; object-fit: contain; display: block; margin: 0 auto 4px auto; }
+    .teamLogoSmall { width: 30px; height: 30px; object-fit: contain; margin-right: 6px; vertical-align: middle; }
     .status { margin-top:8px; font-size:14px; color:#ccc; }
-    #schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
+    .schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
     .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
     small { color:#bbb; }
+
+    /* Responsive fonts */
+    h1 { font-size: 2.5vw; }
+    .score { font-size: 5vw; }
+    .status { font-size: 1.5vw; }
+    .gameRow small { font-size: 1.2vw; }
+
+    /* Button */
+    #nextButton {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 10px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #nextButton:hover { background: #333; }
   </style>
 </head>
 
 <body>
-  <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
+  <div id="scaleContainer">
+    <!-- SCREEN FOR STEELERS -->
+    <div id="steelersScreen" class="screen active">
+      <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
+      <div class="card">
+        <div id="steelersLoading">Loading…</div>
+        <div id="steelersContent" style="display:none;">
+          <div id="steelersLatest"></div>
+          <div class="status"><small id="steelersFetchedAt"></small></div>
+          <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+          <div id="steelersSchedule" class="schedule"></div>
+        </div>
+      </div>
+    </div>
 
-  <div id="main" class="card">
-    <div id="loading">Loading…</div>
+    <!-- SCREEN FOR PENGUINS -->
+    <div id="penguinsScreen" class="screen">
+      <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
+      <div class="card">
+        <div id="penguinsLoading">Loading…</div>
+        <div id="penguinsContent" style="display:none;">
+          <div id="penguinsLatest"></div>
+          <div class="status"><small id="penguinsFetchedAt"></small></div>
+          <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+          <div id="penguinsSchedule" class="schedule"></div>
+        </div>
+      </div>
+    </div>
 
-    <div id="content" style="display:none;">
-      <div id="latestGameContainer"></div>
-      <div class="status"><small id="fetchedAt"></small></div>
-
-      <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
-      <div id="schedule"></div>
+    <!-- SCREEN FOR PITT PANTHERS -->
+    <div id="pittpanthersScreen" class="screen">
+      <h1>Pitt Panthers — Latest Game & Schedule</h1>
+      <div class="card">
+        <div id="pittpanthersLoading">Loading…</div>
+        <div id="pittpanthersContent" style="display:none;">
+          <div id="pittpanthersLatest"></div>
+          <div class="status"><small id="pittpanthersFetchedAt"></small></div>
+          <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+          <div id="pittpanthersSchedule" class="schedule"></div>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- NEXT SCREEN BUTTON -->
+  <button id="nextButton">Next Screen</button>
+
   <script>
-    const API = '/api/scores';
+    const teams = [
+      { name: 'steelers', api: '/api/scores?team=steelers' },
+      { name: 'penguins', api: '/api/scores?team=penguins' },
+      { name: 'pittpanthers', api: '/api/scores?team=pittpanthers' }
+    ];
 
     function safeDate(d) {
       const dt = new Date(d);
       return isNaN(dt.getTime()) ? null : dt;
     }
 
-    async function render() {
-      const loading = document.getElementById('loading');
-      const content = document.getElementById('content');
-      const latestContainer = document.getElementById('latestGameContainer');
-      const scheduleDiv = document.getElementById('schedule');
-      const fetchedEl = document.getElementById('fetchedAt');
+    async function renderTeam(team) {
+      const loading = document.getElementById(`${team.name}Loading`);
+      const content = document.getElementById(`${team.name}Content`);
+      const latestContainer = document.getElementById(`${team.name}Latest`);
+      const scheduleDiv = document.getElementById(`${team.name}Schedule`);
+      const fetchedEl = document.getElementById(`${team.name}FetchedAt`);
 
       loading.style.display = 'block';
       content.style.display = 'none';
 
       try {
-        const res = await fetch(API);
+        const res = await fetch(team.api);
         const json = await res.json();
 
         loading.style.display = 'none';
         content.style.display = 'block';
-
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-        // ---------------------------
-        // LATEST GAME (WITH LOGOS)
-        // ---------------------------
         const latest = json.latestGame;
-
         if (latest) {
           const dt = safeDate(latest.gameDate);
-
           const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
           const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
 
@@ -95,18 +163,13 @@
                 <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
                 <strong>${latest.away?.name || "?"}</strong>
               </div>
-
               <div class="score">${awayScore}</div>
-
               <div class="team" style="text-align:right;">
                 <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
                 <strong>${latest.home?.name || "?"}</strong>
               </div>
-
               <div class="score">${homeScore}</div>
-
               <div style="clear:both;"></div>
-
               <div class="status">
                 Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
               </div>
@@ -116,16 +179,9 @@
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        // ---------------------------
-        // UPCOMING GAMES (WITH LOGOS)
-        // ---------------------------
         scheduleDiv.innerHTML = "";
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
-
-        // filter invalid dates
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
-
-        // sort chronologically
         upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
@@ -135,23 +191,18 @@
             const dt = safeDate(g.gameDate);
             const row = document.createElement('div');
             row.className = 'gameRow';
-
             row.innerHTML = `
               <div style="display:flex; align-items:center; gap:10px;">
                 <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
                 <strong>${g.away?.name || "?"}</strong>
-
                 <span style="opacity:0.7; margin:0 8px;">@</span>
-
                 <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
                 <strong>${g.home?.name || "?"}</strong>
               </div>
-
               <div>
                 <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
               </div>
             `;
-
             scheduleDiv.appendChild(row);
           });
         }
@@ -159,15 +210,28 @@
       } catch (err) {
         loading.style.display = 'none';
         content.style.display = 'block';
-
         latestContainer.innerHTML = '<div style="color:salmon">Failed to load data.</div>';
         scheduleDiv.innerHTML = `<div style="color:salmon">${err.message || String(err)}</div>`;
       }
     }
 
-    render();
-    setInterval(render, 45 * 1000);
+    function renderAllTeams() {
+      teams.forEach(t => renderTeam(t));
+    }
+
+    renderAllTeams();
+    setInterval(renderAllTeams, 45 * 1000);
+
+    // SCREEN ROTATION - MANUAL
+    let currentScreen = 0;
+    const screenElements = teams.map(t => document.getElementById(`${t.name}Screen`));
+    function nextScreen() {
+      screenElements[currentScreen].classList.remove('active');
+      currentScreen = (currentScreen + 1) % screenElements.length;
+      screenElements[currentScreen].classList.add('active');
+    }
+
+    document.getElementById('nextButton').addEventListener('click', nextScreen);
   </script>
 </body>
 </html>
-

@@ -52,7 +52,7 @@
   </div>
 
   <script>
-    const API = '/api/steelers';   // UPDATED
+    const API = '/api/steelers';
 
     function safeDate(d) {
       const dt = new Date(d);
@@ -62,10 +62,11 @@
     function pickLogo(team) {
       return (
         team?.logo ||
+        team?.image ||
         team?.badge ||
         team?.strTeamLogo ||
         team?.strTeamBadge ||
-        ""
+        ''
       );
     }
 
@@ -88,9 +89,6 @@
 
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
-        // ---------------------------
-        // LATEST GAME (WITH LOGOS)
-        // ---------------------------
         const latest = json.latestGame;
 
         if (latest) {
@@ -103,14 +101,14 @@
             <div>
               <div class="team">
                 <img class="teamLogo" src="${pickLogo(latest.away)}" alt="">
-                <strong>${latest.away?.name || "?"}</strong>
+                <strong>${latest.away?.name || '?'}</strong>
               </div>
 
               <div class="score">${awayScore}</div>
 
               <div class="team" style="text-align:right;">
                 <img class="teamLogo" src="${pickLogo(latest.home)}" alt="">
-                <strong>${latest.home?.name || "?"}</strong>
+                <strong>${latest.home?.name || '?'}</strong>
               </div>
 
               <div class="score">${homeScore}</div>
@@ -118,7 +116,7 @@
               <div style="clear:both;"></div>
 
               <div class="status">
-                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
+                Status: ${latest.status || 'Unknown'} — ${dt ? dt.toLocaleString() : 'Invalid Date'}
               </div>
             </div>
           `;
@@ -126,10 +124,7 @@
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        // ---------------------------
-        // UPCOMING GAMES (WITH LOGOS)
-        // ---------------------------
-        scheduleDiv.innerHTML = "";
+        scheduleDiv.innerHTML = '';
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
@@ -146,16 +141,16 @@
             row.innerHTML = `
               <div style="display:flex; align-items:center; gap:10px;">
                 <img class="teamLogoSmall" src="${pickLogo(g.away)}">
-                <strong>${g.away?.name || "?"}</strong>
+                <strong>${g.away?.name || '?'}</strong>
 
                 <span style="opacity:0.7; margin:0 8px;">@</span>
 
                 <img class="teamLogoSmall" src="${pickLogo(g.home)}">
-                <strong>${g.home?.name || "?"}</strong>
+                <strong>${g.home?.name || '?'}</strong>
               </div>
 
               <div>
-                <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
+                <small>${dt.toLocaleString()} — Status: ${g.status || 'NS'}</small>
               </div>
             `;
 
@@ -173,7 +168,7 @@
     }
 
     render();
-    setInterval(render, 45 * 1000);
+    setInterval(render, 45000);
   </script>
 </body>
 </html>

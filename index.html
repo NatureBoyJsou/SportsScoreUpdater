@@ -52,22 +52,11 @@
   </div>
 
   <script>
-    const API = '/api/steelers';
+    const API = '/api/penguins';
 
     function safeDate(d) {
       const dt = new Date(d);
       return isNaN(dt.getTime()) ? null : dt;
-    }
-
-    function pickLogo(team) {
-      return (
-        team?.logo ||
-        team?.image ||
-        team?.badge ||
-        team?.strTeamLogo ||
-        team?.strTeamBadge ||
-        ''
-      );
     }
 
     async function render() {
@@ -89,26 +78,29 @@
 
         fetchedEl.textContent = 'Updated: ' + (json.fetchedAt || new Date().toISOString());
 
+        // ---------------------------
+        // LATEST GAME (WITH LOGOS)
+        // ---------------------------
         const latest = json.latestGame;
 
         if (latest) {
           const dt = safeDate(latest.gameDate);
 
-          const awayScore = latest.away?.score ?? '-';
-          const homeScore = latest.home?.score ?? '-';
+          const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
+          const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
 
           latestContainer.innerHTML = `
             <div>
               <div class="team">
-                <img class="teamLogo" src="${pickLogo(latest.away)}" alt="">
-                <strong>${latest.away?.name || '?'}</strong>
+                <img class="teamLogo" src="${latest.away?.logo || latest.away?.strTeamBadge || ''}" alt="">
+                <strong>${latest.away?.name || "?"}</strong>
               </div>
 
               <div class="score">${awayScore}</div>
 
               <div class="team" style="text-align:right;">
-                <img class="teamLogo" src="${pickLogo(latest.home)}" alt="">
-                <strong>${latest.home?.name || '?'}</strong>
+                <img class="teamLogo" src="${latest.home?.logo || latest.home?.strTeamBadge || ''}" alt="">
+                <strong>${latest.home?.name || "?"}</strong>
               </div>
 
               <div class="score">${homeScore}</div>
@@ -116,7 +108,7 @@
               <div style="clear:both;"></div>
 
               <div class="status">
-                Status: ${latest.status || 'Unknown'} — ${dt ? dt.toLocaleString() : 'Invalid Date'}
+                Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
               </div>
             </div>
           `;
@@ -124,10 +116,16 @@
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
 
-        scheduleDiv.innerHTML = '';
+        // ---------------------------
+        // UPCOMING GAMES (WITH LOGOS)
+        // ---------------------------
+        scheduleDiv.innerHTML = "";
         let upcoming = Array.isArray(json.upcomingGames) ? json.upcomingGames : [];
 
+        // filter invalid dates
         upcoming = upcoming.filter(g => safeDate(g.gameDate));
+
+        // sort chronologically
         upcoming.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate));
 
         if (upcoming.length === 0) {
@@ -140,17 +138,17 @@
 
             row.innerHTML = `
               <div style="display:flex; align-items:center; gap:10px;">
-                <img class="teamLogoSmall" src="${pickLogo(g.away)}">
-                <strong>${g.away?.name || '?'}</strong>
+                <img class="teamLogoSmall" src="${g.away?.logo || g.away?.strTeamBadge || ''}">
+                <strong>${g.away?.name || "?"}</strong>
 
                 <span style="opacity:0.7; margin:0 8px;">@</span>
 
-                <img class="teamLogoSmall" src="${pickLogo(g.home)}">
-                <strong>${g.home?.name || '?'}</strong>
+                <img class="teamLogoSmall" src="${g.home?.logo || g.home?.strTeamBadge || ''}">
+                <strong>${g.home?.name || "?"}</strong>
               </div>
 
               <div>
-                <small>${dt.toLocaleString()} — Status: ${g.status || 'NS'}</small>
+                <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
               </div>
             `;
 
@@ -168,7 +166,7 @@
     }
 
     render();
-    setInterval(render, 45000);
+    setInterval(render, 45 * 1000);
   </script>
 </body>
 </html>

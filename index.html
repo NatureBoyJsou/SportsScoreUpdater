@@ -50,13 +50,11 @@
     .gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
     small { color:#bbb; }
 
-    /* Responsive fonts */
     h1 { font-size: 2.5vw; }
     .score { font-size: 5vw; }
     .status { font-size: 1.5vw; }
     .gameRow small { font-size: 1.2vw; }
 
-    /* Button */
     #nextButton {
       position: absolute;
       bottom: 20px;
@@ -75,7 +73,7 @@
 
 <body>
   <div id="scaleContainer">
-    <!-- SCREEN FOR STEELERS -->
+
     <div id="steelersScreen" class="screen active">
       <h1>Pittsburgh Steelers — Latest Game & Schedule</h1>
       <div class="card">
@@ -89,7 +87,6 @@
       </div>
     </div>
 
-    <!-- SCREEN FOR PENGUINS -->
     <div id="penguinsScreen" class="screen">
       <h1>Pittsburgh Penguins — Latest Game & Schedule</h1>
       <div class="card">
@@ -103,7 +100,6 @@
       </div>
     </div>
 
-    <!-- SCREEN FOR PITT PANTHERS -->
     <div id="pittpanthersScreen" class="screen">
       <h1>Pitt Panthers — Latest Game & Schedule</h1>
       <div class="card">
@@ -116,16 +112,27 @@
         </div>
       </div>
     </div>
+
+    <div id="pittSoccerScreen" class="screen">
+      <h1>Pitt Men’s Soccer — Latest Schedule</h1>
+      <div class="card">
+        <div id="pittSoccerLoading">Loading…</div>
+        <div id="pittSoccerContent" style="display:none;">
+          <div id="pittSoccerSchedule" class="schedule"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- NEXT SCREEN BUTTON -->
   <button id="nextButton">Next Screen</button>
 
   <script>
     const teams = [
       { name: 'steelers', api: '/api/scores?team=steelers' },
       { name: 'penguins', api: '/api/scores?team=penguins' },
-      { name: 'pittpanthers', api: '/api/scores?team=pittpanthers' }
+      { name: 'pittpanthers', api: '/api/scores?team=pittpanthers' },
+      { name: 'pittSoccer', rss: 'https://pittsburghpanthers.com/calendar.ashx/calendar.rss?path=msoccer' }
     ];
 
     function safeDate(d) {
@@ -134,6 +141,87 @@
     }
 
     async function renderTeam(team) {
+
+      /* ------------- PITT MEN'S SOCCER (RSS) ------------- */
+      if (team.rss) {
+        const loading = document.getElementById(`${team.name}Loading`);
+        const content = document.getElementById(`${team.name}Content`);
+        const scheduleDiv = document.getElementById(`${team.name}Schedule`);
+
+        loading.style.display = 'block';
+        content.style.display = 'none';
+
+        try {
+          const res = await fetch(
+            `https://api.allorigins.win/get?url=${encodeURIComponent(team.rss)}`
+          );
+          const data = await res.json();
+
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(data.contents, "text/xml");
+
+          let items = [...xml.querySelectorAll("item")].map(item => ({
+            title: item.querySelector("title")?.textContent || "",
+            link: item.querySelector("link")?.textContent || "#",
+            date: new Date(item.querySelector("pubDate")?.textContent || "")
+          }));
+
+          const now = new Date();
+          const valid = items.filter(i => !isNaN(i.date));
+          const future = valid.filter(i => i.date >= now).sort((a,b)=>a.date-b.date);
+          const past = valid.filter(i => i.date < now).sort((a,b)=>b.date-a.date);
+
+          scheduleDiv.innerHTML = "";
+
+          if (future.length > 0) {
+            const next = future[0];
+            scheduleDiv.innerHTML = `
+              <div class="gameRow">
+                <strong>Next Game</strong><br>
+                ${next.title}<br>
+                <small>${next.date.toLocaleString()}</small><br>
+                <a href="${next.link}" target="_blank" style="color:#fff;">Details</a>
+              </div>`;
+          }
+          else if (past.length > 0) {
+            const last = past[0];
+            scheduleDiv.innerHTML = `
+              <div class="gameRow">
+                <strong>Most Recent Game</strong><br>
+                ${last.title}<br>
+                <small>${last.date.toLocaleString()}</small><br>
+                <a href="${last.link}" target="_blank" style="color:#fff;">Details</a>
+              </div>`;
+          }
+          else if (items.length > 0) {
+            const fallback = items[0];
+            scheduleDiv.innerHTML = `
+              <div class="gameRow">
+                <strong>Latest Event (No Valid Date)</strong><br>
+                ${fallback.title}<br>
+                <small>No valid date</small><br>
+                <a href="${fallback.link}" target="_blank" style="color:#fff;">Details</a>
+              </div>`;
+          }
+          else {
+            scheduleDiv.innerHTML =
+              `<div class="gameRow">No soccer events found.</div>`;
+          }
+
+          loading.style.display = 'none';
+          content.style.display = 'block';
+
+        } catch (err) {
+          loading.style.display = 'none';
+          content.style.display = 'block';
+          scheduleDiv.innerHTML =
+            `<div style="color:salmon">RSS Load Error: ${err.message}</div>`;
+        }
+
+        return;
+      }
+
+      /* ------------ API SPORTS TEAMS ------------ */
       const loading = document.getElementById(`${team.name}Loading`);
       const content = document.getElementById(`${team.name}Content`);
       const latestContainer = document.getElementById(`${team.name}Latest`);
@@ -173,8 +261,7 @@
               <div class="status">
                 Status: ${latest.status || "Unknown"} — ${dt ? dt.toLocaleString() : "Invalid Date"}
               </div>
-            </div>
-          `;
+            </div>`;
         } else {
           latestContainer.innerHTML = '<div>No recent game found.</div>';
         }
@@ -201,8 +288,7 @@
               </div>
               <div>
                 <small>${dt.toLocaleString()} — Status: ${g.status || "NS"}</small>
-              </div>
-            `;
+              </div>`;
             scheduleDiv.appendChild(row);
           });
         }
@@ -222,9 +308,9 @@
     renderAllTeams();
     setInterval(renderAllTeams, 45 * 1000);
 
-    // SCREEN ROTATION - MANUAL
     let currentScreen = 0;
     const screenElements = teams.map(t => document.getElementById(`${t.name}Screen`));
+
     function nextScreen() {
       screenElements[currentScreen].classList.remove('active');
       currentScreen = (currentScreen + 1) % screenElements.length;

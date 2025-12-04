@@ -51,7 +51,7 @@ const ESPN_LOGOS = {
   "Montreal Canadiens": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/mtl.png",
   "Vegas Golden Knights": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/vgk.png",
   "Colorado Avalanche": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/col.png",
-  "Tampa Bay Lightning": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/tbl.png",
+  "Tampa Bay Lightning": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/tb.png&h=200&w=200",
   "Florida Panthers": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/fla.png",
   "Dallas Stars": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/dal.png",
   "Los Angeles Kings": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/la.png",

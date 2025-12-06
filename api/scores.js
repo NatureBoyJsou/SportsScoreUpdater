@@ -1,10 +1,8 @@
-// api/team.js
 const CACHE_TTL = 20 * 1000; // 20 seconds
 let cache = {}; // per-team cache
 
 // ESPN LOGO LOOKUP TABLE (NFL, NHL, ACC, USL Championship)
 const ESPN_LOGOS = {
-
   // ─────────── NFL TEAMS ───────────
   "Pittsburgh Steelers": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/pit.png",
   "Baltimore Ravens": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/bal.png",
@@ -57,8 +55,7 @@ const ESPN_LOGOS = {
   "Los Angeles Kings": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/la.png",
   "San Jose Sharks": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sj.png",
 
-  // ─────────── ACC / NCAA (fixed keys to ESPN internal names)
-  // Use ESPN's canonical team names as keys so the CDN URLs resolve correctly.
+  // ─────────── ACC / NCAA
   "Pittsburgh Panthers": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200",
   "Clemson Tigers": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/228.png&h=200&w=200",
   "Florida State Seminoles": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/52.png&h=200&w=200",
@@ -72,8 +69,7 @@ const ESPN_LOGOS = {
   "Syracuse Orange": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/183.png&h=200&w=200",
   "Pitt Panthers Soccer": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200",
 
-  // ─────────── USL CHAMPIONSHIP (24 TEAMS) ───────────
-  // Keys prefer full club names; we alias common variants below.
+  // ─────────── USL CHAMPIONSHIP (24 TEAMS)
   "Pittsburgh Riverhounds SC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/17827.png&h=200&w=200",
   "Birmingham Legion FC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/19405.png&h=200&w=200",
   "Charleston Battery": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/9729.png&h=200&w=200",
@@ -96,9 +92,8 @@ const ESPN_LOGOS = {
   "Rio Grande Valley FC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/18452.png&h=200&w=200",
   "Sacramento Republic FC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/17828.png&h=200&w=200",
   "Rhode Island FC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/22164.png&h=200&w=200",
-  "San Diego Loyal SC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/17829.png&h=200&w=200", 
+  "San Diego Loyal SC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/17829.png&h=200&w=200",
   "San Antonio FC": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/18265.png&h=200&w=200",
-
   "Tampa Bay Rowdies": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/17361.png&h=200&w=200",
   "FC Tulsa": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/18446.png&h=200&w=200"
 };
@@ -123,7 +118,7 @@ const LOGO_ALIASES = {
   "San Diego Loyal": "San Diego Loyal SC",
   "Tulsa FC": "FC Tulsa",
 
-  // NCAA/ACC aliases mapped to ESPN canonical names (you asked to use 'Pittsburgh Panthers')
+  // NCAA/ACC aliases
   "Pitt": "Pittsburgh Panthers",
   "Pitt Panthers": "Pittsburgh Panthers",
   "Pittsburgh Panthers": "Pittsburgh Panthers", // canonical
@@ -142,42 +137,24 @@ const LOGO_ALIASES = {
 };
 
 function getESPNLogo(teamName) {
-  // 1️⃣ Direct match
   if (ESPN_LOGOS[teamName]) return ESPN_LOGOS[teamName];
-
-  // 2️⃣ Alias match
   if (LOGO_ALIASES[teamName] && ESPN_LOGOS[LOGO_ALIASES[teamName]]) {
     return ESPN_LOGOS[LOGO_ALIASES[teamName]];
   }
-
-  // 3️⃣ Remove common suffixes like "Football", "Soccer", "Men's", "Women's"
   const simplified = teamName.replace(/\s+(Football|Soccer|Men's|Women's).*$/i, '').trim();
   if (ESPN_LOGOS[simplified]) return ESPN_LOGOS[simplified];
   if (LOGO_ALIASES[simplified] && ESPN_LOGOS[LOGO_ALIASES[simplified]]) {
     return ESPN_LOGOS[LOGO_ALIASES[simplified]];
   }
-
-  // 4️⃣ Case-insensitive search
   const normalizedKey = Object.keys(ESPN_LOGOS).find(k => k.toLowerCase() === teamName.toLowerCase());
   if (normalizedKey) return ESPN_LOGOS[normalizedKey];
-
-  // 5️⃣ Default fallback for Pitt Panthers
   if (/pitt/i.test(teamName)) return "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200";
-
-  // 6️⃣ Final generic placeholder
   return "https://via.placeholder.com/48?text=?";
 }
 
-
-/* ────────────────────────────────────────────────
-   CUSTOM STEELERS TV CHANNEL LOGIC
-   ──────────────────────────────────────────────── */
 function getSteelersTV(gameDateISO) {
   if (!gameDateISO || gameDateISO === "TBD") return "TBD";
-
   const d = new Date(gameDateISO);
-
-  // Timezone-safe extraction for America/New_York
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -185,161 +162,125 @@ function getSteelersTV(gameDateISO) {
     minute: "numeric",
     hour12: false
   });
-
   const parts = dtf.formatToParts(d);
-
-  let hour = null;
-  let minute = null;
-  let weekday = null;
-
+  let hour = null, minute = null, weekday = null;
   for (const p of parts) {
     if (p.type === "hour") hour = parseInt(p.value, 10);
     if (p.type === "minute") minute = parseInt(p.value, 10);
     if (p.type === "weekday") weekday = p.value;
   }
-
-  const dayMap = {
-    Sunday: 0,
-    Monday: 1,
-    Tuesday: 2,
-    Wednesday: 3,
-    Thursday: 4,
-    Friday: 5,
-    Saturday: 6
-  };
-
+  const dayMap = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
   const day = dayMap[weekday] ?? d.getDay();
-
-  if (day === 0) {
-    if (hour === 13) return "CBS — KDKA";
-    if (hour === 20) return "FOX — WPGH";
-  }
-
-  if (day === 4) return "Amazon Prime Video";
-  if (day === 1) return "ESPN / ABC";
-
+  if (day === 0) { if(hour===13) return "CBS — KDKA"; if(hour===20) return "FOX — WPGH"; }
+  if(day===4) return "Amazon Prime Video";
+  if(day===1) return "ESPN / ABC";
   return "TBD";
 }
 
-/* ────────────────────────────────────────────────
-   FORMAT GAME (Steelers TV included)
-   ──────────────────────────────────────────────── */
-function formatGame(g, future = false, teamKey = null) {
-  if (!g) return null;
-
+function formatGame(g, future=false, teamKey=null) {
+  if(!g) return null;
   let gameDate;
-  if (g.dateEvent && g.strTime) {
-    gameDate = `${g.dateEvent}T${g.strTime}`;
-  } else if (g.strTimestamp) {
-    gameDate = g.strTimestamp;
-  } else {
-    gameDate = "TBD";
-  }
+  if(g.dateEvent && g.strTime) gameDate = `${g.dateEvent}T${g.strTime}`;
+  else if(g.strTimestamp) gameDate = g.strTimestamp;
+  else gameDate = "TBD";
 
   let homeScore = null;
   let awayScore = null;
-
-  if (!future) {
-    homeScore =
-      g.intHomeScore != null ? Number(g.intHomeScore)
-      : g.intHomeScoreTotal != null ? Number(g.intHomeScoreTotal)
-      : null;
-
-    awayScore =
-      g.intAwayScore != null ? Number(g.intAwayScore)
-      : g.intAwayScoreTotal != null ? Number(g.intAwayScoreTotal)
-      : null;
+  if(!future){
+    homeScore = g.intHomeScore!=null?Number(g.intHomeScore):g.intHomeScoreTotal!=null?Number(g.intHomeScoreTotal):null;
+    awayScore = g.intAwayScore!=null?Number(g.intAwayScore):g.intAwayScoreTotal!=null?Number(g.intAwayScoreTotal):null;
   }
 
   return {
-    idEvent: g.idEvent,
+    idEvent:g.idEvent,
     gameDate,
-    status: g.strStatus || (future ? "NS" : "FT"),
-    tvChannel:
-      teamKey === "steelers"
-        ? getSteelersTV(gameDate)
-        : g.strTVStation || "TBD",
-
-    home: {
-      id: g.idHomeTeam,
-      name: g.strHomeTeam,
-      score: homeScore,
-      logo: getESPNLogo(g.strHomeTeam),
-      strTeamBadge: getESPNLogo(g.strHomeTeam)
-    },
-
-    away: {
-      id: g.idAwayTeam,
-      name: g.strAwayTeam,
-      score: awayScore,
-      logo: getESPNLogo(g.strAwayTeam),
-      strTeamBadge: getESPNLogo(g.strAwayTeam)
-    }
+    status:g.strStatus||(future?"NS":"FT"),
+    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate):g.strTVStation||"TBD",
+    home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:getESPNLogo(g.strHomeTeam), strTeamBadge:getESPNLogo(g.strHomeTeam)},
+    away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:getESPNLogo(g.strAwayTeam), strTeamBadge:getESPNLogo(g.strAwayTeam)}
   };
 }
 
-/* ────────────────────────────────────────────────
-   TEAM ID MAPPING  (added USL Riverhounds)
-   ──────────────────────────────────────────────── */
 const TEAM_IDS = {
-  steelers: "134925",
-  penguins: "134844",
-  pittpanthers: "136941",
-
-  // USL:
-  riverhounds: "138896"
+  steelers:"134925",
+  penguins:"134844",
+  pittpanthers:"136941",
+  riverhounds:"138896"
 };
 
 const API_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 
-/* ────────────────────────────────────────────────
-   MAIN HANDLER
-   ──────────────────────────────────────────────── */
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Content-Type", "application/json");
+export default async function handler(req,res){
+  res.setHeader("Access-Control-Allow-Origin","*");
+  res.setHeader("Access-Control-Allow-Headers","*");
+  res.setHeader("Content-Type","application/json");
 
-  try {
-    const teamKey = (req.query.team || "").toLowerCase();
+  try{
+    const teamKey = (req.query.team||"").toLowerCase();
     const TEAM_ID = TEAM_IDS[teamKey];
-
-    if (!TEAM_ID)
-      return res.status(400).json({ error: "Unknown team" });
+    if(!TEAM_ID) return res.status(400).json({error:"Unknown team"});
 
     const now = Date.now();
-    if (cache[teamKey] && now - cache[teamKey].ts < CACHE_TTL) {
+    if(cache[teamKey] && now - cache[teamKey].ts < CACHE_TTL){
       return res.status(200).send(cache[teamKey].body);
     }
 
     const lastRes = await fetch(`${API_BASE}/eventslast.php?id=${TEAM_ID}`);
     const lastJson = await lastRes.json();
-    const lastGameRaw = lastJson?.results?.[0] || null;
-    const lastGame = formatGame(lastGameRaw, false, teamKey);
+    const lastGames = lastJson?.results || [];
 
     const nextRes = await fetch(`${API_BASE}/eventsnext.php?id=${TEAM_ID}`);
     const nextJson = await nextRes.json();
-    const nextGamesRaw = nextJson?.events || [];
-    const nextFormatted = nextGamesRaw.map(g => formatGame(g, true, teamKey));
+    const nextGames = nextJson?.events || [];
+
+    // ======= NEW LOGIC: detect CURRENT/ONGOING GAME =======
+    const nowISO = new Date().toISOString();
+    let currentGame = null;
+
+    // Check last games
+    for(const g of lastGames){
+      if(!g.dateEvent || !g.strTime) continue;
+      const start = new Date(`${g.dateEvent}T${g.strTime}`).toISOString();
+      const end = g.strTimeEnd?new Date(`${g.dateEvent}T${g.strTimeEnd}`).toISOString():new Date(new Date(`${g.dateEvent}T${g.strTime}`).getTime() + 3*60*60*1000).toISOString(); // default 3h
+      if(start<=nowISO && nowISO<=end){
+        currentGame = formatGame(g,false,teamKey);
+        break;
+      }
+    }
+
+    // Check next games if no live game
+    if(!currentGame){
+      for(const g of nextGames){
+        if(!g.dateEvent || !g.strTime) continue;
+        const start = new Date(`${g.dateEvent}T${g.strTime}`).toISOString();
+        const end = g.strTimeEnd?new Date(`${g.dateEvent}T${g.strTimeEnd}`).toISOString():new Date(new Date(`${g.dateEvent}T${g.strTime}`).getTime() + 3*60*60*1000).toISOString();
+        if(start<=nowISO && nowISO<=end){
+          currentGame = formatGame(g,true,teamKey);
+          break;
+        }
+      }
+    }
+
+    // Fallback to last game
+    if(!currentGame) currentGame = lastGames[0]?formatGame(lastGames[0],false,teamKey):null;
+
+    const nextFormatted = nextGames.map(g=>formatGame(g,true,teamKey));
 
     const payload = {
-      team: teamKey,
-      fetchedAt: new Date().toISOString(),
-      latestGame: lastGame,
-      nextGame: nextFormatted[0] || null,
+      team:teamKey,
+      fetchedAt:new Date().toISOString(),
+      latestGame: currentGame,
+      nextGame: nextFormatted[0]||null,
       upcomingGames: nextFormatted
     };
 
     const body = JSON.stringify(payload);
-    cache[teamKey] = { ts: now, body };
+    cache[teamKey] = {ts:now, body};
 
     return res.status(200).send(body);
 
-  } catch (err) {
-    console.error(`API Error for team ${req.query.team}:`, err);
-    return res.status(500).json({
-      error: "Server Error",
-      details: err.message || String(err)
-    });
+  }catch(err){
+    console.error(`API Error for team ${req.query.team}:`,err);
+    return res.status(500).json({error:"Server Error", details:err.message||String(err)});
   }
 }

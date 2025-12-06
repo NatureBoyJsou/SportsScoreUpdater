@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>PGH Sports Dashboard ⬛🟨</title>
+<style>
+/* ---------- your existing styles (kept intact) ---------- */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  background: #000;
+  color: #fff;
+}
+.screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  transition: transform 0.7s ease-in-out, opacity 0.7s ease-in-out;
+  opacity: 0;
+  transform: translateX(100%);
+  pointer-events: none;
+}
+.screen.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.screen.slide-out-left {
+  opacity: 0;
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+#steelersScreen { background-image: url('/SteelersBG.png'); }
+#penguinsScreen { background-image: url('/PenguinsBG.jpg'); }
+#pittpanthersScreen { background-image: url('/PittBG.png'); }
+#pittSoccerScreen { background-image: url('/PittMS.jpeg'); }
+#riverhoundsScreen { background-image: url('/Riverhounds.jpg'); }
+.screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 0;
+}
+h1, .card, .status, .schedule { position: relative; z-index: 1; }
+.card { 
+  background:#111;
+  padding:18px;
+  border-radius:12px;
+  display:inline-block;
+  width:480px;
+  text-align:center;
+  box-shadow:0 0 15px rgba(0,0,0,0.25);
+}
+h1 { margin:6px 0 12px; font-size:20px; text-align:center; }
+.team { display:inline-block; width:130px; vertical-align:middle; text-align:center; }
+.score { font-size:28px; display:inline-block; width:80px; vertical-align:middle; }
+.teamLogo { width: 48px; height: 48px; object-fit: contain; display: block; margin: 0 auto 4px auto; }
+.teamLogoSmall { width: 30px; height: 30px; object-fit: contain; margin-right: 6px; vertical-align: middle; }
+.status { margin-top:8px; font-size:14px; color:#ccc; }
+.schedule { margin-top:14px; text-align:left; max-height:260px; overflow:auto; }
+.gameRow { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04); }
+small { color:#bbb; }
+.networkBadge {
+  display: inline-block;
+  background: #ffcc00;
+  color: #000;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-size: 1em;
+}
+h1 { font-size: 2.5vw; }
+.score { font-size: 5vw; }
+.status { font-size: 1.5vw; }
+.gameRow small { font-size: 1.2vw; }
+
+/* Buttons Container */
+#screenButtons {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+.screen-button {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  border: 2px solid #555;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.screen-button:hover { transform: scale(1.05); }
+.screen-button.active { border: 2px solid #ffcc00; }
+</style>
+</head>
+<body>
+<div id="scaleContainer">
+
+  <!-- Steelers -->
+  <div id="steelersScreen" class="screen active">
+    <h1></h1>
+    <div class="card">
+      <div id="steelersLoading">Loading…</div>
+      <div id="steelersContent" style="display:none;">
+        <div id="steelersLatest"></div>
+        <div class="status"><small id="steelersFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <div id="steelersSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Penguins -->
+  <div id="penguinsScreen" class="screen">
+    <h1>Pittsburgh Penguins 🏒</h1>
+    <div class="card">
+      <div id="penguinsLoading">Loading…</div>
+      <div id="penguinsContent" style="display:none;">
+        <div id="penguinsLatest"></div>
+        <div class="status"><small id="penguinsFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <div id="penguinsSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pitt Panthers (Football) -->
+  <div id="pittpanthersScreen" class="screen">
+    <h1></h1>
+    <div class="card">
+      <div id="pittpanthersLoading">Loading…</div>
+      <div id="pittpanthersContent" style="display:none;">
+        <div id="pittpanthersLatest"></div>
+        <div class="status"><small id="pittpanthersFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <div id="pittpanthersSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pitt Soccer -->
+  <div id="pittSoccerScreen" class="screen">
+    <h1></h1>
+    <div class="card">
+      <div id="pittSoccerLoading">Loading…</div>
+      <div id="pittSoccerContent" style="display:none;">
+        <div id="pittSoccerLatest"></div>
+        <div class="status"><small id="pittSoccerFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <div id="pittSoccerSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Riverhounds -->
+  <div id="riverhoundsScreen" class="screen">
+    <h1></h1>
+    <div class="card">
+      <div id="riverhoundsLoading">Loading…</div>
+      <div id="riverhoundsContent" style="display:none;">
+        <div id="riverhoundsLatest"></div>
+        <div class="status"><small id="riverhoundsFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <div id="riverhoundsSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Screen Buttons -->
+<div id="screenButtons"></div>
+
+<script>
+/* ---------------- teams config ---------------- */
+const teams = [
+  { name: 'steelers', api: '/api/scores?team=steelers', img:'/PittsburghSteelersLogo.png' },
+  { name: 'penguins', api: '/api/scores?team=penguins', img:'/PittsburghPenguinsLogo.png' },
+  { name: 'pittpanthers', api: '/api/scores?team=pittpanthers', img:'/PittFootballLogo.jpg' },
+  // pittSoccer will be filled from CSV on the server
+  { name: 'pittSoccer', api: '/data/pittSoccer.json', img:'/PittSoccerLogo.png' },
+  { name: 'riverhounds', api: '/api/scores?team=riverhounds', img:'/RiverhoundsLogo.png' }
+];
+// ---------------- logos ----------------
+const ESPN_NCAA_LOGOS = {
+  "michigan state": "https://a.espncdn.com/i/teamlogos/ncaa/500/127.png",
+  "quinnipiac": "https://a.espncdn.com/i/teamlogos/ncaa/500/2440.png",
+  // add more opponent logos here
+};
+const DEFAULT_LOGO = '/defaultLogo.png';
+const PITT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200";
+/* ---------------- helpers ---------------- */
+function safeDate(d){ const dt = new Date(d); return isNaN(dt.getTime())?null:dt; }
+function toLocal(dt){ return dt ? new Date(dt.getTime() - dt.getTimezoneOffset() * 60000) : null; }
+function formatLocal(dt){ return dt ? dt.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}) : 'Invalid Date'; }
+function getSteelersNetwork(gameDate){
+  const dt = safeDate(gameDate);
+  if(!dt)return '';
+  const day=dt.getDay(),hour=dt.getHours();
+  if(day===0){if(hour===18)return'CBS-KDKA';if(hour===21)return'Fox-WPGH';if(hour===1)return'NBC/Peacock-WPXI';}
+  if(day===4)return 'Amazon Prime';if(day===1)return 'ESPN'; return '';
+}
+
+/* ---------------- CSV parsing helpers ---------------- */
+/* Simple CSV parser that handles quoted values */
+function parseCSV(text){
+  const rows = [];
+  let cur = '';
+  let row = [];
+  let inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ cur += '"'; i++; continue; } // escaped quote
+        inQuotes = false;
+      } else {
+        cur += ch;
+      }
+    } else {
+      if(ch === '"'){ inQuotes = true; continue; }
+      if(ch === ','){ row.push(cur); cur = ''; continue; }
+      if(ch === '\r') continue;
+      if(ch === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; continue; }
+      cur += ch;
+    }
+  }
+  if(cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
+/* Parse time string like "8:00PM" or "8 PM" or "8:00?PM" into {h,m,ampm} */
+function parseTimeString(t){
+  if(!t) return null;
+  t = t.replace(/\?/g,'').trim(); // remove stray question marks
+  // possible formats: "8:00PM", "8:00 PM", "8 PM", "20:00"
+  const m1 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/i);
+  if(m1){
+    let hh = parseInt(m1[1],10), mm = parseInt(m1[2],10);
+    const ampm = (m1[3]||'').toUpperCase();
+    if(ampm){
+      if(ampm==='PM' && hh<12) hh+=12;
+      if(ampm==='AM' && hh===12) hh = 0;
+    }
+    return { h: hh, m: mm };
+  }
+  const m2 = t.match(/^(\d{1,2})\s*(AM|PM|am|pm)$/i);
+  if(m2){
+    let hh = parseInt(m2[1],10), mm = 0;
+    const ampm = m2[2].toUpperCase();
+    if(ampm==='PM' && hh<12) hh+=12;
+    if(ampm==='AM' && hh===12) hh = 0;
+    return { h: hh, m: mm };
+  }
+  // 24-hour like "20:00"
+  const m3 = t.match(/^(\d{1,2}):(\d{2})$/);
+  if(m3){
+    return { h: parseInt(m3[1],10), m: parseInt(m3[2],10) };
+  }
+  return null;
+}
+
+/* Parse date like 8/21/2025 or 08/21/2025 or 2025-08-21 into {y,m,d} */
+function parseDateString(d){
+  if(!d) return null;
+  d = d.trim();
+  // common mm/dd/yyyy
+  let m = d.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(m){
+    let month = parseInt(m[1],10);
+    let day = parseInt(m[2],10);
+    let year = parseInt(m[3],10);
+    if(year < 100) year += 2000;
+    return { y: year, m: month, d: day };
+  }
+  // yyyy-mm-dd
+  m = d.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if(m){
+    return { y: parseInt(m[1],10), m: parseInt(m[2],10), d: parseInt(m[3],10) };
+  }
+  // fallback: try Date parser
+  const dt = new Date(d);
+  if(!isNaN(dt.getTime())){
+    return { y: dt.getFullYear(), m: dt.getMonth()+1, d: dt.getDate() };
+  }
+  return null;
+}
+
+/* Build a Date object from parsed date and time pieces in local timezone */
+function buildDateFromParts(dateParts, timeParts){
+  if(!dateParts) return null;
+  const hh = timeParts ? (timeParts.h ?? 0) : 0;
+  const mm = timeParts ? (timeParts.m ?? 0) : 0;
+  // new Date(year, monthIndex, day, hours, minutes)
+  return new Date(dateParts.y, dateParts.m - 1, dateParts.d, hh, mm, 0, 0);
+}
+
+/* ---------------- CSV -> schedule builder tailored to your CSV columns ---------------- */
+function buildGamesFromCSV(rows){
+  if(!rows || rows.length < 2) return [];
+  const headers = rows[0].map(h => (h||'').trim());
+  const data = rows.slice(1).filter(r => r.some(c => c && c.trim().length));
+
+  // map header to index
+  const indexOf = (names) => {
+    const low = names.map(s=>s.toLowerCase());
+    for(let i=0;i<headers.length;i++){
+      const h = (headers[i]||'').toLowerCase();
+      if(low.includes(h)) return i;
+    }
+    for(let i=0;i<headers.length;i++){
+      const h = (headers[i]||'').toLowerCase();
+      for(const s of low) if(h.includes(s)) return i;
+    }
+    return -1;
+  };
+
+  const evIdx = indexOf(['event']);
+  const sdIdx = indexOf(['start date','startdate','start_date']);
+  const stIdx = indexOf(['start time','starttime','start_time']);
+  const locIdx = indexOf(['location']);
+  const facilityIdx = indexOf(['facility']);
+  const descIdx = indexOf(['description']);
+
+  const games = data.map(row => {
+    const event = evIdx !== -1 ? (row[evIdx]||'') : '';
+    const startDateRaw = sdIdx !== -1 ? (row[sdIdx]||'') : '';
+    const startTimeRaw = stIdx !== -1 ? (row[stIdx]||'') : '';
+    const location = locIdx !== -1 ? (row[locIdx]||'') : '';
+    const facility = facilityIdx !== -1 ? (row[facilityIdx]||'') : '';
+    const description = descIdx !== -1 ? (row[descIdx]||'') : '';
+
+    // Determine opponent and home/away from event string
+    let opponent = '';
+    let homeIsPitt = true;
+    const evLower = (event||'').toLowerCase();
+    if(evLower.includes(' at ')){
+      opponent = event.split(/ at /i).pop().trim();
+      homeIsPitt = false;
+    } else if(evLower.includes(' vs ') || evLower.includes(' vs. ')){
+      opponent = event.split(/ vs\.? /i).pop().trim();
+      homeIsPitt = true;
+    } else {
+      // fallback: try description
+      const m = (description||'').match(/vs\.?\s+(.+)|at\s+(.+)/i);
+      opponent = m ? (m[1]||m[2]||'') : event;
+      opponent = opponent.trim();
+    }
+
+    // parse date/time carefully
+    const dateParts = parseDateString(startDateRaw);
+    const timeParts = parseTimeString(startTimeRaw);
+    const dt = buildDateFromParts(dateParts, timeParts);
+    const iso = dt && !isNaN(dt.getTime()) ? dt.toISOString() : null;
+
+const opponentKey = (opponent || '').toLowerCase();
+const opponentLogo = ESPN_NCAA_LOGOS && ESPN_NCAA_LOGOS[opponentKey] ? ESPN_NCAA_LOGOS[opponentKey] : '/defaultLogo.png';
+
+return {
+  gameDate: iso,
+  home: homeIsPitt
+    ? { name: "Pitt", logo: "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200" }
+    : { name: opponent || "Opponent", logo: opponentLogo },
+  away: homeIsPitt
+    ? { name: opponent || "Opponent", logo: opponentLogo }
+    : { name: "Pitt", logo: "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200" },
+  location: facility || location || '',
+  status: 'Scheduled',
+  rawEvent: event,
+  description: description
+};
+
+
+  });
+
+  // sort ascending by date (unknown dates go last)
+  games.sort((a,b)=>{
+    const ta = a.gameDate ? new Date(a.gameDate).getTime() : 9e15;
+    const tb = b.gameDate ? new Date(b.gameDate).getTime() : 9e15;
+    return ta - tb;
+  });
+
+  return games;
+}
+
+/* ---------------- convert games -> { latestGame, upcomingGames, fetchedAt } ---------------- */
+function makeScheduleObject(games){
+  const now = Date.now();
+  const upcoming = games.filter(g => g.gameDate && new Date(g.gameDate).getTime() >= now);
+  const next = upcoming.length ? upcoming[0] : (games.length ? games[games.length-1] : null);
+  return {
+    latestGame: next ? Object.assign({}, next) : null,
+    upcomingGames: games,
+    fetchedAt: (new Date()).toISOString()
+  };
+}
+
+/* ---------------- renderTeam (prefers uploadedSchedules stored in memory) ---------------- */
+window.uploadedSchedules = window.uploadedSchedules || {}; // in-memory schedules keyed by team name
+
+async function renderTeam(team){
+  const loading = document.getElementById(`${team.name}Loading`);
+  const content = document.getElementById(`${team.name}Content`);
+  const latestContainer = document.getElementById(`${team.name}Latest`);
+  const scheduleDiv = document.getElementById(`${team.name}Schedule`);
+  const fetchedEl = document.getElementById(`${team.name}FetchedAt`);
+
+  loading.style.display='block';
+  content.style.display='none';
+  latestContainer.innerHTML='';
+  scheduleDiv.innerHTML='';
+
+  try {
+    // If CSV-derived schedule exists in memory (auto-loaded from server path), use it
+    if(window.uploadedSchedules[team.name]){
+      const json = window.uploadedSchedules[team.name];
+      fetchedEl.textContent = 'Updated: ' + formatLocal(new Date(json.fetchedAt||new Date()));
+      const latest = json.latestGame;
+      if(latest){
+        const dt = safeDate(latest.gameDate);
+        const local = toLocal(dt);
+        const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
+        const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
+        const networkHtml = latest.network ? `<span class="networkBadge">${latest.network}</span>` : '';
+        latestContainer.innerHTML=`
+        <div>
+          <div class="team"><img class="teamLogo" src="${latest.away?.logo||''}" alt=""><strong>${latest.away?.name||''}</strong></div>
+          <div class="score">${awayScore}</div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${latest.home?.logo||''}" alt=""><strong>${latest.home?.name||''}</strong></div>
+          <div class="score">${homeScore}</div>
+          <div style="clear:both;"></div>
+          <div class="status">Status: ${latest.status||'Scheduled'} — ${formatLocal(local)} ${networkHtml}</div>
+        </div>`;
+      }
+      const upcoming = json.upcomingGames || [];
+      scheduleDiv.innerHTML = '';
+      if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';
+      else upcoming.forEach(g=>{
+        const dt = safeDate(g.gameDate);
+        const local = toLocal(dt);
+        const networkHtml = g.network ? `<span class="networkBadge">${g.network}</span>` : '';
+        const row=document.createElement('div');
+        row.className='gameRow';
+        row.innerHTML=`
+          <div style="display:flex;align-items:center;gap:10px;">
+            <img class="teamLogoSmall" src="${g.away?.logo||''}"><strong>${g.away?.name}</strong>
+            <span style="opacity:0.7;margin:0 8px;">@</span>
+            <img class="teamLogoSmall" src="${g.home?.logo||''}"><strong>${g.home?.name}</strong>
+          </div>
+          <div><small>${formatLocal(local)} — Status: ${g.status||'Scheduled'} ${networkHtml}</small></div>`;
+        scheduleDiv.appendChild(row);
+      });
+      loading.style.display='none'; content.style.display='block';
+      return;
+    }
+
+    // else fallback to API fetch (unchanged)
+    if(team.api){
+      const res = await fetch(team.api);
+      if(!res.ok) throw new Error('API fetch failed');
+      const json = await res.json();
+      loading.style.display='none'; content.style.display='block';
+      fetchedEl.textContent='Updated: '+formatLocal(new Date(json.fetchedAt||new Date()));
+      const latest=json.latestGame;
+      if(latest){
+        const dt=safeDate(latest.gameDate);
+        const local=toLocal(dt);
+        const awayScore=latest.away?.score??latest.awayScore??'-';
+        const homeScore=latest.home?.score??latest.homeScore??'-';
+        const network=team.name==='steelers'?getSteelersNetwork(dt):'';
+        const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
+        latestContainer.innerHTML=`
+        <div>
+          <div class="team"><img class="teamLogo" src="${latest.away?.logo}" alt=""><strong>${latest.away?.name}</strong></div>
+          <div class="score">${awayScore}</div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${latest.home?.logo}" alt=""><strong>${latest.home?.name}</strong></div>
+          <div class="score">${homeScore}</div>
+          <div style="clear:both;"></div>
+          <div class="status">Status: ${latest.status} — ${formatLocal(local)} ${networkHtml}</div>
+        </div>`;
+      }
+      let upcoming=json.upcomingGames||[];
+      upcoming=upcoming.filter(g=>safeDate(g.gameDate)).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+      scheduleDiv.innerHTML='';
+      if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';
+      else upcoming.forEach(g=>{
+        const dt=safeDate(g.gameDate);
+        const local=toLocal(dt);
+        const network=team.name==='steelers'?getSteelersNetwork(dt):'';
+        const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
+        const row=document.createElement('div');
+        row.className='gameRow';
+        row.innerHTML=`
+        <div style="display:flex;align-items:center;gap:10px;">
+          <img class="teamLogoSmall" src="${g.away?.logo}"><strong>${g.away?.name}</strong>
+          <span style="opacity:0.7;margin:0 8px;">@</span>
+          <img class="teamLogoSmall" src="${g.home?.logo}"><strong>${g.home?.name}</strong></div>
+        <div><small>${formatLocal(local)} — Status: ${g.status} ${networkHtml}</small></div>`;
+        scheduleDiv.appendChild(row);
+      });
+      return;
+    }
+
+    latestContainer.innerHTML = "<div>No data available</div>";
+    scheduleDiv.innerHTML = "<div class='gameRow'>No events found</div>";
+    loading.style.display='none';
+    content.style.display='block';
+
+  } catch(err){
+    latestContainer.innerHTML='<div style="color:salmon">Failed to load data</div>';
+    scheduleDiv.innerHTML=`<div style="color:salmon">${err.message}</div>`;
+    loading.style.display='none';content.style.display='block';
+  }
+}
+
+/* ---------------- initial render + auto-refresh ---------------- */
+function renderAllTeams(){ teams.forEach(t=>renderTeam(t)); }
+renderAllTeams();
+setInterval(renderAllTeams,45000);
+
+/* ---------------- screen rotation + buttons (unchanged) ---------------- */
+let currentScreen=0;
+const screenElements=teams.map(t=>document.getElementById(`${t.name}Screen`));
+const buttonsContainer=document.getElementById('screenButtons');
+teams.forEach((team,i)=>{
+  const btn=document.createElement('div');
+  btn.className='screen-button';
+  btn.style.backgroundImage=`url('${team.img}')`;
+  btn.addEventListener('click',()=>goToScreen(i));
+  buttonsContainer.appendChild(btn);
+});
+function updateActiveButton(){
+  const btns=document.querySelectorAll('.screen-button');
+  btns.forEach((b,i)=>b.classList.toggle('active',i===currentScreen));
+}
+updateActiveButton();
+function goToScreen(targetIndex){
+  if(targetIndex===currentScreen) return;
+  const current = screenElements[currentScreen];
+  current.classList.remove('active');
+  current.classList.add('slide-out-left');
+  const next = screenElements[targetIndex];
+  next.classList.remove('slide-out-left');
+  requestAnimationFrame(()=>{ next.classList.add('active'); });
+  setTimeout(()=>{ current.classList.remove('slide-out-left'); },700);
+  currentScreen = targetIndex;
+  updateActiveButton();
+  renderTeam(teams[currentScreen]);
+}
+//
+//setInterval(()=>{
+  //let nextIndex=(currentScreen+1)%screenElements.length;
+  //goToScreen(nextIndex);
+//},15000);
+
+/* ---------------- Auto-load CSV from project (no uploader) ----------------
+   We try several likely server paths. If found and parse succeeds, it populates pittSoccer.
+*/
+(async function tryLoadCSVFromServer(){
+  const paths = ['/Add2Calendar.csv','/Add2Calendar.csv','/data/pittSoccer.csv','/data/Add2Calendar','/data/Add2Calendar.CSV'];
+  for(const p of paths){
+    try {
+      const resp = await fetch(p, {cache: "no-store"});
+      if(!resp.ok) continue;
+      const text = await resp.text();
+      const rows = parseCSV(text);
+      const games = buildGamesFromCSV(rows);
+      if(games.length){
+        const schedule = makeScheduleObject(games);
+        window.uploadedSchedules['pittSoccer'] = schedule;
+        console.info(`Loaded CSV from ${p} — ${games.length} games`);
+        // immediately render pittSoccer
+        renderTeam(teams.find(t=>t.name==='pittSoccer'));
+        return;
+      }
+    } catch(e){
+      // ignore and try next path
+    }
+  }
+  // no CSV found; nothing else to do
+})();
+</script>
+</body>
+</html>

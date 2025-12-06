@@ -169,7 +169,40 @@ h1 { font-size: 2.5vw; }
     background: rgba(0,0,0,0.5);
   }
 
+  /* ---------- Fix latest game horizontal alignment ---------- */
+  #steelersLatest > div,
+  #penguinsLatest > div,
+  #pittpanthersLatest > div,
+  #pittSoccerLatest > div,
+  #riverhoundsLatest > div {
+    display: flex;
+    flex-direction: row;      /* keep teams & scores side by side */
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;          /* allow wrapping if screen is too narrow */
+    gap: 8px;
+  }
+
+  #steelersLatest .team,
+  #penguinsLatest .team,
+  #pittpanthersLatest .team,
+  #pittSoccerLatest .team,
+  #riverhoundsLatest .team {
+    width: auto;             /* let team boxes shrink naturally */
+    text-align: center;
+  }
+
+  #steelersLatest .score,
+  #penguinsLatest .score,
+  #pittpanthersLatest .score,
+  #pittSoccerLatest .score,
+  #riverhoundsLatest .score {
+    font-size: 8vw;          /* scale down for mobile */
+    width: auto;             /* let score shrink naturally */
+  }
+
 }
+
 
 
 
@@ -194,7 +227,7 @@ h1 { font-size: 2.5vw; }
 
   <!-- Penguins -->
   <div id="penguinsScreen" class="screen">
-    <h1>Pittsburgh Penguins 🏒</h1>
+    <h1></h1>
     <div class="card">
       <div id="penguinsLoading">Loading…</div>
       <div id="penguinsContent" style="display:none;">

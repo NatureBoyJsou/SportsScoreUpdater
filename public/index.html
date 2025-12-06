@@ -106,6 +106,73 @@ h1 { font-size: 2.5vw; }
 }
 .screen-button:hover { transform: scale(1.05); }
 .screen-button.active { border: 2px solid #ffcc00; }
+
+/* ---------- Responsive / Mobile Adjustments ---------- */
+@media (max-width: 768px) {
+
+  .card {
+    width: 90%;           /* Shrink cards to fit small screens */
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 6vw;       /* Bigger relative for mobile */
+    margin-bottom: 8px;
+  }
+
+  .score {
+    font-size: 10vw;      /* Large for visibility on small screens */
+    width: 60px;          /* Narrower to fit flex layout */
+  }
+
+  .team {
+    width: 40%;           /* two-team flex row fits */
+    font-size: 3.5vw;
+  }
+
+  .teamLogo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .teamLogoSmall {
+    width: 24px;
+    height: 24px;
+  }
+
+  .status {
+    font-size: 3vw;
+    margin-top: 6px;
+  }
+
+  .gameRow small {
+    font-size: 2.8vw;
+  }
+
+  #screenButtons {
+    bottom: 10px;
+    left: 10px;
+    gap: 6px;
+  }
+
+  .screen-button {
+    width: 60px;
+    height: 60px;
+  }
+
+  .schedule {
+    max-height: 180px;   /* reduce schedule height on mobile */
+  }
+
+  /* Reduce background overlay darkness on small screens for clarity */
+  .screen::before {
+    background: rgba(0,0,0,0.5);
+  }
+
+}
+
+
+
 </style>
 </head>
 <body>
@@ -161,7 +228,7 @@ h1 { font-size: 2.5vw; }
       <div id="pittSoccerContent" style="display:none;">
         <div id="pittSoccerLatest"></div>
         <div class="status"><small id="pittSoccerFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Season Schedule</h3>
         <div id="pittSoccerSchedule" class="schedule"></div>
       </div>
     </div>
@@ -418,6 +485,7 @@ async function renderTeam(team){
   const content = document.getElementById(`${team.name}Content`);
   const latestContainer = document.getElementById(`${team.name}Latest`);
   const scheduleDiv = document.getElementById(`${team.name}Schedule`);
+  
   const fetchedEl = document.getElementById(`${team.name}FetchedAt`);
 
   loading.style.display='block';
@@ -562,38 +630,110 @@ function goToScreen(targetIndex){
   updateActiveButton();
   renderTeam(teams[currentScreen]);
 }
-//
-//setInterval(()=>{
-  //let nextIndex=(currentScreen+1)%screenElements.length;
-  //goToScreen(nextIndex);
-//},15000);
 
-/* ---------------- Auto-load CSV from project (no uploader) ----------------
-   We try several likely server paths. If found and parse succeeds, it populates pittSoccer.
-*/
-(async function tryLoadCSVFromServer(){
-  const paths = ['/Add2Calendar.csv','/Add2Calendar.csv','/data/pittSoccer.csv','/data/Add2Calendar','/data/Add2Calendar.CSV'];
-  for(const p of paths){
-    try {
-      const resp = await fetch(p, {cache: "no-store"});
-      if(!resp.ok) continue;
-      const text = await resp.text();
-      const rows = parseCSV(text);
-      const games = buildGamesFromCSV(rows);
-      if(games.length){
-        const schedule = makeScheduleObject(games);
-        window.uploadedSchedules['pittSoccer'] = schedule;
-        console.info(`Loaded CSV from ${p} — ${games.length} games`);
-        // immediately render pittSoccer
-        renderTeam(teams.find(t=>t.name==='pittSoccer'));
-        return;
+// ---------------- Auto-load Pitt Soccer from HTML table ----------------
+// ---------------- Auto-load Pitt Soccer from HTML table ----------------
+async function tryLoadPittSoccerHTML() {
+  const url = '/PittSoccerSchedule.html';
+  try {
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTML fetch failed');
+    const text = await resp.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/html');
+    const rows = Array.from(doc.querySelectorAll('table tr'))
+      .filter(tr => tr.querySelectorAll('td').length)
+      .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
+
+    if (!rows.length) return;
+
+    const games = rows.map(row => {
+      const [dateStr, timeStr, atHomeStr, opponent, location, tournament, result] = row;
+      const atHome = atHomeStr.toLowerCase() === 'home';
+
+      // Parse date robustly (Aug 21 → 2025-08-21)
+      const monthMap = {
+        Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5,
+        Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11
+      };
+      const dateMatch = dateStr.match(/([A-Za-z]{3})\s+(\d{1,2})/);
+      let gameDate;
+      if(dateMatch){
+        const mon = monthMap[dateMatch[1]] ?? 0;
+        const day = parseInt(dateMatch[2],10);
+        gameDate = new Date(2025, mon, day); // force 2025 season
+      } else {
+        gameDate = new Date(dateStr + ' 2025'); // fallback
       }
-    } catch(e){
-      // ignore and try next path
-    }
+
+      // Parse score and W/L/T
+      let homeScore = null, awayScore = null, status = 'Scheduled';
+      if(result){
+        const m = result.match(/([WLT])\s*(\d+)-(\d+)/i);
+        if(m){
+          const outcome = m[1].toUpperCase();
+          const score1 = parseInt(m[2],10);
+          const score2 = parseInt(m[3],10);
+          if(atHome){
+            homeScore = score1;
+            awayScore = score2;
+          } else {
+            homeScore = score2;
+            awayScore = score1;
+          }
+          // status relative to Pitt
+          if(outcome==='W') status = `Win ${homeScore}-${awayScore}`;
+          else if(outcome==='L') status = `Loss ${homeScore}-${awayScore}`;
+          else status = `Tie ${homeScore}-${awayScore}`;
+        }
+      }
+
+      const opponentKey = (opponent || '').toLowerCase();
+      const opponentLogo = ESPN_NCAA_LOGOS[opponentKey] || DEFAULT_LOGO;
+
+      return {
+        gameDate: gameDate.toISOString(),
+        home: atHome ? { name: 'Pitt', logo: PITT_LOGO, score: homeScore } : { name: opponent, logo: opponentLogo, score: homeScore },
+        away: atHome ? { name: opponent, logo: opponentLogo, score: awayScore } : { name: 'Pitt', logo: PITT_LOGO, score: awayScore },
+        location,
+        status,
+        tournament,
+        rawEvent: opponent,
+        isPast: gameDate.getTime() < Date.now()
+      };
+    });
+
+    // Sort ascending by date
+    games.sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+
+    // Determine if season is over (all games past)
+    const allPast = games.every(g => g.isPast);
+
+    // Latest game is most recent past game
+    const pastGames = games.filter(g => g.isPast);
+    const latestGame = pastGames.length ? pastGames[pastGames.length-1] : (games[0] || null);
+
+    window.uploadedSchedules['pittSoccer'] = {
+      latestGame,
+      upcomingGames: allPast ? games : games.filter(g => !g.isPast),
+      allGames: games,
+      seasonEnded: allPast,
+      fetchedAt: new Date().toISOString()
+    };
+
+    renderTeam(teams.find(t=>t.name==='pittSoccer'));
+    console.info(`Loaded Pitt Soccer HTML — ${games.length} games, ${allPast ? 'season ended' : 'upcoming games active'}`);
+
+  } catch(e){
+    console.error('Failed to load Pitt Soccer HTML:', e);
   }
-  // no CSV found; nothing else to do
-})();
+}
+
+
+tryLoadPittSoccerHTML();
+
+
+
 </script>
 </body>
 </html>

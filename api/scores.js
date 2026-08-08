@@ -249,6 +249,35 @@ const STEELERS_PRESEASON_TV_BY_OPPONENT = {
   "Buffalo Bills": "KDKA"
 };
 
+const PITT_FOOTBALL_BROADCAST_BY_OPPONENT = {
+  "miamioh": { tv: "The CW", radio: "93.7 The Fan" },
+  "ucf": { tv: "ESPN2", radio: "93.7 The Fan" },
+  "syracuse": { tv: "ESPN", radio: "93.7 The Fan" },
+  "bucknell": { tv: "ACCNX", radio: "93.7 The Fan" },
+  "virginiatech": { tv: "ESPN", radio: "93.7 The Fan" },
+  "northcarolina": { tv: "TBD", radio: "93.7 The Fan" },
+  "bostoncollege": { tv: "TBD", radio: "93.7 The Fan" },
+  "miami": { tv: "TBD", radio: "93.7 The Fan" },
+  "georgiatech": { tv: "TBD", radio: "93.7 The Fan" },
+  "floridastate": { tv: "ESPN", radio: "93.7 The Fan" },
+  "louisville": { tv: "TBD", radio: "93.7 The Fan" },
+  "california": { tv: "TBD", radio: "93.7 The Fan" }
+};
+
+function normalizePittOpponent(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\(\s*oh\s*\)/g, "oh")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function getPittFootballBroadcast(homeTeam, awayTeam) {
+  const opponent = homeTeam === "Pittsburgh Panthers" ? awayTeam : homeTeam;
+  const key = normalizePittOpponent(opponent);
+  return PITT_FOOTBALL_BROADCAST_BY_OPPONENT[key] || { tv: "TBD", radio: "93.7 The Fan" };
+}
+
 function getSteelersTV(gameDateISO, roundRaw, homeTeam, awayTeam) {
   const opponent = homeTeam === "Pittsburgh Steelers" ? awayTeam : homeTeam;
   if (opponent && STEELERS_PRESEASON_TV_BY_OPPONENT[opponent]) {
@@ -295,11 +324,24 @@ function formatGame(g, future=false, teamKey=null) {
     awayScore = g.intAwayScore!=null?Number(g.intAwayScore):g.intAwayScoreTotal!=null?Number(g.intAwayScoreTotal):null;
   }
 
+  const pittBroadcast = teamKey === "pittpanthers"
+    ? getPittFootballBroadcast(g.strHomeTeam, g.strAwayTeam)
+    : null;
+
   return {
     idEvent:g.idEvent,
     gameDate,
     status:g.strStatus||(future?"NS":"FT"),
-    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate, g.intRound, g.strHomeTeam, g.strAwayTeam):g.strTVStation||"TBD",
+    tvChannel:
+      teamKey === "steelers"
+        ? getSteelersTV(gameDate, g.intRound, g.strHomeTeam, g.strAwayTeam)
+        : teamKey === "pittpanthers"
+          ? (pittBroadcast?.tv || g.strTVStation || "TBD")
+          : (g.strTVStation || "TBD"),
+    radioChannel:
+      teamKey === "pittpanthers"
+        ? (pittBroadcast?.radio || g.strRadioStation || "93.7 The Fan")
+        : (g.strRadioStation || ""),
     home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:getESPNLogo(g.strHomeTeam), strTeamBadge:getESPNLogo(g.strHomeTeam)},
     away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:getESPNLogo(g.strAwayTeam), strTeamBadge:getESPNLogo(g.strAwayTeam)}
   };

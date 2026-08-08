@@ -318,7 +318,7 @@ const ESPN_NCAA_LOGOS = {
   "bostoncollege": "https://a.espncdn.com/i/teamlogos/ncaa/500/103.png",
   "virginia": "https://a.espncdn.com/i/teamlogos/ncaa/500/258.png"
 };
-const DEFAULT_LOGO = '/PittSoccerLogo.png';
+const DEFAULT_LOGO = '/default-team-logo.svg';
 const PITT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200";
 /* ---------------- helpers ---------------- */
 function safeDate(d){ const dt = new Date(d); return isNaN(dt.getTime())?null:dt; }
@@ -686,14 +686,15 @@ function goToScreen(targetIndex){
 
 // ---------------- Auto-load Pitt Soccer from the Panthers schedule text ----------------
 function normalizeOpponent(value){
-  return (value || '')
-    .replace(/#\d+/g, '')
-    .replace(/\(exh\)/gi, '')
-    .replace(/^(men['’]s\s+soccer|mens soccer)\s+/i, '')
-    .replace(/^(vs|at|versus)\s+/i, '')
-    .replace(/[^a-z0-9]+/g, '')
-    .trim()
-    .toLowerCase();
+  const cleaned = (value || '').trim();
+  let normalized = cleaned.toLowerCase();
+  normalized = normalized.replace(/#\d+/g, '');
+  normalized = normalized.replace(/\(exh\)/g, '');
+  normalized = normalized.replace(/^men(?:'s|’s)?\s+soccer\s+/i, '');
+  normalized = normalized.replace(/^mens soccer\s+/i, '');
+  normalized = normalized.replace(/^(vs|at|versus)\s+/i, '');
+  normalized = normalized.replace(/[^a-z0-9]+/g, '');
+  return normalized.trim();
 }
 
 function parseScheduleTextResult(resultText){

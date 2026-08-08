@@ -173,7 +173,18 @@ const STEELERS_TV_BY_WEEK = {
   18: "TBD"
 };
 
-function getSteelersTV(gameDateISO, roundRaw) {
+const STEELERS_PRESEASON_TV_BY_OPPONENT = {
+  "Green Bay Packers": "KDKA",
+  "New York Jets": "KDKA",
+  "Buffalo Bills": "KDKA"
+};
+
+function getSteelersTV(gameDateISO, roundRaw, homeTeam, awayTeam) {
+  const opponent = homeTeam === "Pittsburgh Steelers" ? awayTeam : homeTeam;
+  if (opponent && STEELERS_PRESEASON_TV_BY_OPPONENT[opponent]) {
+    return STEELERS_PRESEASON_TV_BY_OPPONENT[opponent];
+  }
+
   const round = Number(roundRaw);
   if (Number.isInteger(round) && STEELERS_TV_BY_WEEK[round]) return STEELERS_TV_BY_WEEK[round];
   if (!gameDateISO || gameDateISO === "TBD") return "TBD";
@@ -218,7 +229,7 @@ function formatGame(g, future=false, teamKey=null) {
     idEvent:g.idEvent,
     gameDate,
     status:g.strStatus||(future?"NS":"FT"),
-    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate, g.intRound):g.strTVStation||"TBD",
+    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate, g.intRound, g.strHomeTeam, g.strAwayTeam):g.strTVStation||"TBD",
     home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:getESPNLogo(g.strHomeTeam), strTeamBadge:getESPNLogo(g.strHomeTeam)},
     away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:getESPNLogo(g.strAwayTeam), strTeamBadge:getESPNLogo(g.strAwayTeam)}
   };

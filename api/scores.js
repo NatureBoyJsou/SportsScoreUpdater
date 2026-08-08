@@ -609,6 +609,215 @@ async function fetchPittPanthersGamesFromSite() {
   return games;
 }
 
+function normalizeNhlStatus(state) {
+  const s = String(state || "").toUpperCase();
+  if (s === "FINAL" || s === "OFF") return "FT";
+  if (s === "LIVE" || s === "CRIT") return "LIVE";
+  if (s === "PRE" || s === "FUT") return "NS";
+  return "NS";
+}
+
+function formatNhlTeamName(team) {
+  if (!team) return "Unknown Team";
+  const place = team?.placeName?.default || "";
+  const common = team?.commonName?.default || "";
+  return `${place} ${common}`.trim();
+}
+
+function parseNhlGamesList(games) {
+  return (games || []).map(g => {
+    const awayScore = Number.isFinite(g?.awayTeam?.score) ? Number(g.awayTeam.score) : null;
+    const homeScore = Number.isFinite(g?.homeTeam?.score) ? Number(g.homeTeam.score) : null;
+    const tv = Array.isArray(g?.tvBroadcasts)
+      ? g.tvBroadcasts
+          .map(t => t?.network)
+          .filter(Boolean)
+          .join(" / ")
+      : "";
+
+    return {
+      idEvent: String(g?.id || `${g?.gameDate || "tbd"}-${g?.awayTeam?.abbrev || "a"}-${g?.homeTeam?.abbrev || "h"}`),
+      dateEvent: g?.gameDate || null,
+      strTime: g?.startTimeUTC ? new Date(g.startTimeUTC).toISOString().slice(11, 19) : null,
+      strTimestamp: g?.startTimeUTC ? new Date(g.startTimeUTC).toISOString() : "TBD",
+      strStatus: normalizeNhlStatus(g?.gameState),
+      strTVStation: tv || "TBD",
+      strRadioStation: g?.homeTeam?.radioLink || g?.awayTeam?.radioLink || "",
+      strHomeTeam: formatNhlTeamName(g?.homeTeam),
+      strAwayTeam: formatNhlTeamName(g?.awayTeam),
+      intHomeScore: homeScore,
+      intAwayScore: awayScore
+    };
+  });
+}
+
+function getNhlSeasonId(date = new Date()) {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const startYear = m >= 6 ? y : y - 1;
+  return `${startYear}${startYear + 1}`;
+}
+
+async function fetchPenguinsGamesFromNhlSite() {
+  const currentSeason = getNhlSeasonId(new Date());
+  const previousSeason = String(Number(currentSeason) - 10001);
+  const seasonIds = [currentSeason, previousSeason];
+  const allGames = [];
+
+  for (const seasonId of seasonIds) {
+    const url = `https://api-web.nhle.com/v1/club-schedule-season/PIT/${seasonId}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json,text/plain,*/*"
+      }
+    });
+    if (!res.ok) continue;
+    const json = await res.json();
+    allGames.push(...parseNhlGamesList(json?.games || []));
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const g of allGames) {
+    if (seen.has(g.idEvent)) continue;
+    seen.add(g.idEvent);
+    deduped.push(g);
+  }
+
+  if (!deduped.length) throw new Error("NHL Penguins schedule parse returned 0 games");
+  deduped.sort((a, b) => {
+    const ta = a.strTimestamp && a.strTimestamp !== "TBD" ? new Date(a.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.strTimestamp && b.strTimestamp !== "TBD" ? new Date(b.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+  return deduped;
+}
+
+function parseRiverhoundsDateTime(monthDayRaw, timeRaw, year) {
+  const md = String(monthDayRaw || "").trim().match(/^([A-Za-z]+)\s+(\d{1,2})$/);
+  if (!md) return "TBD";
+  const monthMap = {
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+  };
+  const monthIdx = monthMap[md[1].toLowerCase()];
+  if (monthIdx == null) return "TBD";
+  const day = Number(md[2]);
+
+  let hours = 12;
+  let minutes = 0;
+  const t = String(timeRaw || "").toLowerCase().replace(/\./g, "").trim();
+  const tm = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(a|p)m$/);
+  if (tm) {
+    hours = Number(tm[1]);
+    minutes = Number(tm[2] || 0);
+    const meridian = tm[3];
+    if (meridian === "p" && hours < 12) hours += 12;
+    if (meridian === "a" && hours === 12) hours = 0;
+  } else if (t.includes("noon")) {
+    hours = 12;
+    minutes = 0;
+  } else if (t.includes("tbd")) {
+    return "TBD";
+  }
+
+  const date = new Date(Date.UTC(year, monthIdx, day, hours, minutes, 0));
+  return Number.isNaN(date.getTime()) ? "TBD" : date.toISOString();
+}
+
+function stripHtmlTags(value) {
+  return decodeHtmlEntities(String(value || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function parseRiverhoundsGamesFromHtml(html) {
+  const yearMatch = html.match(/<h1[^>]*class="entry-title"[^>]*>(\d{4})\s+Schedule<\/h1>/i);
+  const seasonYear = yearMatch ? Number(yearMatch[1]) : new Date().getUTCFullYear();
+  const cardRegex = /<div class="NewGame\s+GameContainer\s+([^"]+)"[\s\S]*?<\/div>\s*<\/div>\s*<!-- END OF MATCH/gi;
+  const games = [];
+  let m;
+
+  while ((m = cardRegex.exec(html)) !== null) {
+    const classTokens = m[1] || "";
+    const block = m[0] || "";
+    const isAway = /\bAwayGame\b/.test(classTokens);
+    const isCompleted = /\bCompleted\b/.test(classTokens);
+
+    const monthDay = stripHtmlTags((block.match(/<div class="gametext">\s*([A-Za-z]+\s+\d{1,2})\s*<\/div>/i) || [])[1]);
+    const timeRaw = stripHtmlTags((block.match(/<div class="gametext">\s*([^<]+?)\s*<\/div>\s*<\/div>\s*<div class="Opponent">/i) || [])[1]);
+    const oppCity = stripHtmlTags((block.match(/<h4 class="Opponent-city">([\s\S]*?)<\/h4>/i) || [])[1]);
+    const oppNick = stripHtmlTags((block.match(/<h4 class="Opponent-nickname">([\s\S]*?)<\/h4>/i) || [])[1]);
+    const venue = stripHtmlTags((block.match(/<div class="Promotion">[\s\S]*?<h5>([\s\S]*?)<\/h5>/i) || [])[1]);
+
+    const tvLinks = [...block.matchAll(/<div class="Broadcast">[\s\S]*?<a [^>]*>([\s\S]*?)<\/a>/gi)]
+      .map(x => stripHtmlTags(x[1]))
+      .filter(Boolean);
+
+    const opponent = [oppCity, oppNick].filter(Boolean).join(" ").trim() || "Opponent";
+    const ts = parseRiverhoundsDateTime(monthDay, timeRaw, seasonYear);
+    const homeTeam = isAway ? opponent : "Pittsburgh Riverhounds SC";
+    const awayTeam = isAway ? "Pittsburgh Riverhounds SC" : opponent;
+
+    games.push({
+      idEvent: `rh-${seasonYear}-${monthDay.replace(/\s+/g, "-")}-${opponent.replace(/\s+/g, "-")}`.toLowerCase(),
+      dateEvent: ts !== "TBD" ? ts.slice(0, 10) : null,
+      strTime: ts !== "TBD" ? ts.slice(11, 19) : null,
+      strTimestamp: ts,
+      strStatus: isCompleted ? "FT" : "NS",
+      strTVStation: tvLinks.length ? tvLinks.join(" / ") : "TBD",
+      strHomeTeam: homeTeam,
+      strAwayTeam: awayTeam,
+      strVenue: venue,
+      intHomeScore: null,
+      intAwayScore: null
+    });
+  }
+
+  if (!games.length) throw new Error("Riverhounds schedule parse returned 0 games");
+  return games;
+}
+
+async function fetchRiverhoundsGamesFromSite() {
+  const url = "https://www.riverhounds.com/schedule/";
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "text/html,application/xhtml+xml"
+    }
+  });
+  if (!res.ok) throw new Error(`Riverhounds schedule fetch failed: ${res.status}`);
+  const html = await res.text();
+  return parseRiverhoundsGamesFromHtml(html);
+}
+
+function normalizeTeamSlug(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+}
+
+function mergeRiverhoundsScores(siteGames, dbGames) {
+  if (!Array.isArray(siteGames) || !Array.isArray(dbGames) || !dbGames.length) return siteGames;
+  return siteGames.map(g => {
+    const gDate = g?.dateEvent;
+    const gOpp = g.strHomeTeam === "Pittsburgh Riverhounds SC" ? g.strAwayTeam : g.strHomeTeam;
+    const gOppSlug = normalizeTeamSlug(gOpp);
+
+    const match = dbGames.find(d => {
+      const dDate = d?.dateEvent || d?.strTimestamp?.slice?.(0, 10);
+      if (!dDate || !gDate || dDate !== gDate) return false;
+      const dOpp = d.strHomeTeam === "Pittsburgh Riverhounds SC" ? d.strAwayTeam : d.strHomeTeam;
+      return normalizeTeamSlug(dOpp) === gOppSlug;
+    });
+
+    if (!match) return g;
+    return {
+      ...g,
+      intHomeScore: match.intHomeScore != null ? Number(match.intHomeScore) : g.intHomeScore,
+      intAwayScore: match.intAwayScore != null ? Number(match.intAwayScore) : g.intAwayScore,
+      strStatus: match.strStatus === "LIVE" ? "LIVE" : (match.strStatus === "FT" ? "FT" : g.strStatus)
+    };
+  });
+}
+
 const TEAM_IDS = {
   steelers:"134925",
   penguins:"134844",
@@ -687,6 +896,71 @@ export default async function handler(req,res){
       }
     }
 
+    if (teamKey === "penguins") {
+      try {
+        const penguinsGames = await fetchPenguinsGamesFromNhlSite();
+        const nowMs = Date.now();
+        const dated = penguinsGames
+          .map(g => ({ g, ms: g.strTimestamp && g.strTimestamp !== "TBD" ? new Date(g.strTimestamp).getTime() : null }))
+          .filter(item => item.ms !== null && !Number.isNaN(item.ms));
+
+        lastGames = dated
+          .filter(item => item.ms <= nowMs || item.g.strStatus === "FT" || item.g.strStatus === "LIVE")
+          .sort((a, b) => b.ms - a.ms)
+          .map(item => item.g);
+
+        nextGames = dated
+          .filter(item => item.ms > nowMs && item.g.strStatus !== "FT")
+          .sort((a, b) => a.ms - b.ms)
+          .map(item => item.g);
+      } catch (e) {
+        console.warn("NHL Penguins source failed, falling back to TheSportsDB:", e.message || e);
+      }
+    }
+
+    if (teamKey === "riverhounds") {
+      try {
+        const siteGames = await fetchRiverhoundsGamesFromSite();
+        let mergedGames = siteGames;
+
+        try {
+          const lastRes = await fetch(`${API_BASE}/eventslast.php?id=${TEAM_ID}`);
+          const lastJson = await lastRes.json();
+          const nextRes = await fetch(`${API_BASE}/eventsnext.php?id=${TEAM_ID}`);
+          const nextJson = await nextRes.json();
+          const dbGames = [...(lastJson?.results || []), ...(nextJson?.events || [])].map(g => ({
+            dateEvent: g.dateEvent || null,
+            strTimestamp: g.strTimestamp || null,
+            strStatus: g.strStatus || (g.intHomeScore != null && g.intAwayScore != null ? "FT" : "NS"),
+            strHomeTeam: g.strHomeTeam,
+            strAwayTeam: g.strAwayTeam,
+            intHomeScore: g.intHomeScore != null ? Number(g.intHomeScore) : null,
+            intAwayScore: g.intAwayScore != null ? Number(g.intAwayScore) : null
+          }));
+          mergedGames = mergeRiverhoundsScores(siteGames, dbGames);
+        } catch (mergeErr) {
+          console.warn("Riverhounds score merge fallback failed:", mergeErr.message || mergeErr);
+        }
+
+        const nowMs = Date.now();
+        const dated = mergedGames
+          .map(g => ({ g, ms: g.strTimestamp && g.strTimestamp !== "TBD" ? new Date(g.strTimestamp).getTime() : null }))
+          .filter(item => item.ms !== null && !Number.isNaN(item.ms));
+
+        lastGames = dated
+          .filter(item => item.ms <= nowMs || item.g.strStatus === "FT" || item.g.strStatus === "LIVE")
+          .sort((a, b) => b.ms - a.ms)
+          .map(item => item.g);
+
+        nextGames = dated
+          .filter(item => item.ms > nowMs && item.g.strStatus !== "FT")
+          .sort((a, b) => a.ms - b.ms)
+          .map(item => item.g);
+      } catch (e) {
+        console.warn("Riverhounds.com source failed, falling back to TheSportsDB:", e.message || e);
+      }
+    }
+
     if (!lastGames.length && !nextGames.length) {
       const lastRes = await fetch(`${API_BASE}/eventslast.php?id=${TEAM_ID}`);
       const lastJson = await lastRes.json();
@@ -697,7 +971,6 @@ export default async function handler(req,res){
       nextGames = nextJson?.events || [];
     }
 
-    // ======= NEW LOGIC: detect CURRENT/ONGOING GAME =======
     const nowISO = new Date().toISOString();
     let currentGame = null;
 
@@ -725,17 +998,41 @@ export default async function handler(req,res){
       }
     }
 
-    // Fallback to last game
-    if(!currentGame) currentGame = lastGames[0]?formatGame(lastGames[0],false,teamKey):null;
+    const lastFormatted = lastGames.map(g => formatGame(g, false, teamKey));
+    const nextFormatted = nextGames.map(g => formatGame(g, true, teamKey));
 
-    const nextFormatted = nextGames.map(g=>formatGame(g,true,teamKey));
+    const allGamesMap = new Map();
+    for (const g of [...lastFormatted, ...nextFormatted]) {
+      if (!g) continue;
+      const key = g.idEvent || `${g.gameDate}|${g.home?.name}|${g.away?.name}`;
+      if (!allGamesMap.has(key)) allGamesMap.set(key, g);
+    }
+    const allGames = [...allGamesMap.values()].sort((a, b) => {
+      const ta = a.gameDate && a.gameDate !== "TBD" ? new Date(a.gameDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const tb = b.gameDate && b.gameDate !== "TBD" ? new Date(b.gameDate).getTime() : Number.MAX_SAFE_INTEGER;
+      return ta - tb;
+    });
+
+    if (!currentGame) {
+      const nowMs = Date.now();
+      const latestFinished = [...allGames]
+        .filter(g => g && g.gameDate && g.gameDate !== "TBD")
+        .filter(g => {
+          const ms = new Date(g.gameDate).getTime();
+          return Number.isFinite(ms) && (ms <= nowMs || g.status === "FT" || g.status === "LIVE");
+        })
+        .sort((a, b) => new Date(b.gameDate).getTime() - new Date(a.gameDate).getTime())[0];
+
+      currentGame = latestFinished || allGames[0] || null;
+    }
 
     const payload = {
       team:teamKey,
       fetchedAt:new Date().toISOString(),
       latestGame: currentGame,
       nextGame: nextFormatted[0]||null,
-      upcomingGames: nextFormatted
+      upcomingGames: nextFormatted,
+      allGames
     };
 
     const body = JSON.stringify(payload);

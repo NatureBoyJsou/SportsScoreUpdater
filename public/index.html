@@ -219,7 +219,7 @@ h1 { font-size: 2.5vw; }
       <div id="steelersContent" style="display:none;">
         <div id="steelersLatest"></div>
         <div class="status"><small id="steelersFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="steelersSchedule" class="schedule"></div>
       </div>
     </div>
@@ -233,7 +233,7 @@ h1 { font-size: 2.5vw; }
       <div id="penguinsContent" style="display:none;">
         <div id="penguinsLatest"></div>
         <div class="status"><small id="penguinsFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="penguinsSchedule" class="schedule"></div>
       </div>
     </div>
@@ -247,7 +247,7 @@ h1 { font-size: 2.5vw; }
       <div id="pittpanthersContent" style="display:none;">
         <div id="pittpanthersLatest"></div>
         <div class="status"><small id="pittpanthersFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="pittpanthersSchedule" class="schedule"></div>
       </div>
     </div>
@@ -261,7 +261,7 @@ h1 { font-size: 2.5vw; }
       <div id="pittSoccerContent" style="display:none;">
         <div id="pittSoccerLatest"></div>
         <div class="status"><small id="pittSoccerFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Season Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="pittSoccerSchedule" class="schedule"></div>
       </div>
     </div>
@@ -275,7 +275,7 @@ h1 { font-size: 2.5vw; }
       <div id="riverhoundsContent" style="display:none;">
         <div id="riverhoundsLatest"></div>
         <div class="status"><small id="riverhoundsFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Upcoming Games</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="riverhoundsSchedule" class="schedule"></div>
       </div>
     </div>
@@ -551,7 +551,7 @@ async function renderTeam(team){
     if(window.uploadedSchedules[team.name]){
       const json = window.uploadedSchedules[team.name];
       fetchedEl.textContent = 'Updated: ' + formatLocal(new Date(json.fetchedAt||new Date()));
-      const latest = json.latestGame;
+      const latest = json.latestGame || (json.allGames && json.allGames.length ? json.allGames[0] : null);
       if(latest){
         const dt = safeDate(latest.gameDate);
         const local = toLocal(dt);
@@ -568,7 +568,7 @@ async function renderTeam(team){
           <div class="status">Status: ${latest.status||'Scheduled'} — ${formatLocal(local)} ${networkHtml}</div>
         </div>`;
       }
-      const upcoming = json.upcomingGames || [];
+      const upcoming = json.allGames || json.upcomingGames || [];
       scheduleDiv.innerHTML = '';
       if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';
       else upcoming.forEach(g=>{
@@ -597,7 +597,7 @@ async function renderTeam(team){
       const json = await res.json();
       loading.style.display='none'; content.style.display='block';
       fetchedEl.textContent='Updated: '+formatLocal(new Date(json.fetchedAt||new Date()));
-      const latest=json.latestGame;
+      const latest=json.latestGame || (json.allGames && json.allGames.length ? json.allGames[0] : null);
       if(latest){
         const dt=safeDate(latest.gameDate);
         const local=toLocal(dt);
@@ -615,7 +615,7 @@ async function renderTeam(team){
           <div class="status">Status: ${latest.status} — ${formatLocal(local)} ${networkHtml}</div>
         </div>`;
       }
-      let upcoming=json.upcomingGames||[];
+      let upcoming=json.allGames||json.upcomingGames||[];
       upcoming=upcoming.filter(g=>safeDate(g.gameDate)).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
       scheduleDiv.innerHTML='';
       if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';

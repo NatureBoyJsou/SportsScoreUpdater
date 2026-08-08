@@ -67,6 +67,11 @@ const ESPN_LOGOS = {
   "Wake Forest Demon Deacons": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/154.png&h=200&w=200",
   "NC State Wolfpack": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/152.png&h=200&w=200",
   "Syracuse Orange": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/183.png&h=200&w=200",
+  "Virginia Tech Hokies": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/259.png&h=200&w=200",
+  "Duke Blue Devils": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/150.png&h=200&w=200",
+  "Georgia Tech Yellow Jackets": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/59.png&h=200&w=200",
+  "UCF Knights": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/2116.png&h=200&w=200",
+  "Miami (OH) RedHawks": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/193.png&h=200&w=200",
   "Pitt Panthers Soccer": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200",
 
   // ─────────── USL CHAMPIONSHIP (24 TEAMS)
@@ -133,8 +138,67 @@ const LOGO_ALIASES = {
   "Boston College": "Boston College Eagles",
   "Clemson": "Clemson Tigers",
   "Duke": "Duke Blue Devils",
-  "Florida State University": "Florida State Seminoles"
+  "Florida State University": "Florida State Seminoles",
+  "Georgia Tech": "Georgia Tech Yellow Jackets",
+  "Georgia Tech Yellow Jackets": "Georgia Tech Yellow Jackets",
+  "UCF": "UCF Knights",
+  "Miami (OH)": "Miami (OH) RedHawks",
+  "Miami OH": "Miami (OH) RedHawks",
+  "Miami RedHawks": "Miami (OH) RedHawks",
+  "Bucknell Bison": "Bucknell"
 };
+
+const NCAA_FOOTBALL_LOGO_IDS = {
+  pittsburgpanthers: 221,
+  miamioh: 193,
+  miamiohredhawks: 193,
+  ucf: 2116,
+  ucfknights: 2116,
+  syracuse: 183,
+  syracuseorange: 183,
+  bucknell: 2083,
+  bucknellbison: 2083,
+  virginiatech: 259,
+  virginiatechhokies: 259,
+  unc: 153,
+  northcarolina: 153,
+  northcarolinatarheels: 153,
+  bostoncollege: 103,
+  bostoncollegeeagles: 103,
+  miami: 2390,
+  miamifl: 2390,
+  miamihurricanes: 2390,
+  georgiatech: 59,
+  georgiatechyellowjackets: 59,
+  floridastate: 52,
+  floridastateseminoles: 52,
+  duke: 150,
+  dukebluedevils: 150,
+  ncstate: 152,
+  ncstatewolfpack: 152,
+  clemson: 228,
+  clemsontigers: 228,
+  louisville: 97,
+  louisvillecardinals: 97,
+  wakeforest: 154,
+  wakeforestdemondeacons: 154,
+  virginia: 258,
+  virginiacavaliers: 258
+};
+
+function getNcaaLogoFromId(teamId) {
+  return `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
+}
+
+function normalizeCollegeName(teamName) {
+  return String(teamName || "")
+    .toLowerCase()
+    .replace(/#\d+/g, "")
+    .replace(/\(\s*([^)]+)\s*\)/g, "$1")
+    .replace(/\b(university|college|state)\b/g, " $1 ")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
 
 function getESPNLogo(teamName) {
   if (ESPN_LOGOS[teamName]) return ESPN_LOGOS[teamName];
@@ -148,6 +212,12 @@ function getESPNLogo(teamName) {
   }
   const normalizedKey = Object.keys(ESPN_LOGOS).find(k => k.toLowerCase() === teamName.toLowerCase());
   if (normalizedKey) return ESPN_LOGOS[normalizedKey];
+
+  const normalizedCollegeName = normalizeCollegeName(teamName);
+  if (NCAA_FOOTBALL_LOGO_IDS[normalizedCollegeName]) {
+    return getNcaaLogoFromId(NCAA_FOOTBALL_LOGO_IDS[normalizedCollegeName]);
+  }
+
   if (/pitt/i.test(teamName)) return "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200";
   return "https://via.placeholder.com/48?text=?";
 }
@@ -235,6 +305,268 @@ function formatGame(g, future=false, teamKey=null) {
   };
 }
 
+function decodeHtmlEntities(value) {
+  if (!value) return "";
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&nbsp;/g, " ")
+    .replace(/&middot;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseSteelersGameTime(rawGameTime, fallbackIso) {
+  if (rawGameTime && !rawGameTime.startsWith("01/01/0001")) {
+    const m = rawGameTime.match(
+      /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+([+-]\d{2}):(\d{2})$/
+    );
+    if (m) {
+      const [, mm, dd, yyyy, hh, min, ss, tzH, tzM] = m;
+      return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}${tzH}:${tzM}`;
+    }
+  }
+  if (fallbackIso) {
+    const parsed = new Date(fallbackIso);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return "TBD";
+}
+
+function parseSteelersGamesFromHtml(html) {
+  const games = [];
+  const cardRegex = /<div class="nfl-o-matchup-cards([^\"]*)"([^>]*)>([\s\S]*?)<\/div>\s*<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
+
+  let match;
+  while ((match = cardRegex.exec(html)) !== null) {
+    const classSuffix = match[1] || "";
+    const attrs = match[2] || "";
+    const cardHtml = match[3] || "";
+    const ldJsonRaw = decodeHtmlEntities(match[4] || "");
+
+    let ld;
+    try {
+      ld = JSON.parse(ldJsonRaw);
+    } catch {
+      continue;
+    }
+
+    const homeTeam = ld?.homeTeam?.name;
+    const awayTeam = ld?.awayTeam?.name;
+    if (!homeTeam || !awayTeam) continue;
+
+    const gameIdMatch = attrs.match(/data-gameid="([^\"]+)"/i);
+    const gameTimeMatch = attrs.match(/data-gametime="([^\"]+)"/i);
+    const weekMatch = cardHtml.match(/<strong>\s*WEEK\s*(\d+)\s*<\/strong>/i);
+    const tvMatch = cardHtml.match(/nfl-o-matchup-cards__media-tv--networks">\s*([^<]+)\s*</i);
+    const scoreMatches = [...cardHtml.matchAll(/nfl-o-matchup-cards__team-score[^>]*>\s*(\d+)\s*</gi)];
+
+    const gameDate = parseSteelersGameTime(gameTimeMatch?.[1], ld?.startDate);
+
+    let status = "NS";
+    if (/--post-game/i.test(classSuffix)) status = "FT";
+    else if (/--in-game/i.test(classSuffix)) status = "LIVE";
+
+    if (ld?.eventStatus === "https://schema.org/EventCancelled") status = "CANC";
+    if (ld?.eventStatus === "https://schema.org/EventPostponed") status = "PPD";
+
+    let homeScore = null;
+    let awayScore = null;
+    if (scoreMatches.length >= 2) {
+      homeScore = Number(scoreMatches[0][1]);
+      awayScore = Number(scoreMatches[1][1]);
+    }
+
+    games.push({
+      idEvent: gameIdMatch?.[1] || ld?.["@id"] || `${homeTeam}-${awayTeam}-${gameDate}`,
+      dateEvent: gameDate !== "TBD" ? gameDate.slice(0, 10) : null,
+      strTime: gameDate !== "TBD" ? gameDate.slice(11, 19) : null,
+      strTimestamp: gameDate,
+      strStatus: status,
+      intRound: weekMatch ? Number(weekMatch[1]) : null,
+      strTVStation: decodeHtmlEntities(tvMatch?.[1] || ""),
+      strHomeTeam: homeTeam,
+      strAwayTeam: awayTeam,
+      intHomeScore: homeScore,
+      intAwayScore: awayScore
+    });
+  }
+
+  return games;
+}
+
+async function fetchSteelersGamesFromSite() {
+  const url = "https://www.steelers.com/schedule/";
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "text/html,application/xhtml+xml"
+    }
+  });
+
+  if (!res.ok) throw new Error(`Steelers schedule fetch failed: ${res.status}`);
+  const html = await res.text();
+  const games = parseSteelersGamesFromHtml(html);
+  if (!games.length) throw new Error("Steelers schedule parse returned 0 games");
+  return games;
+}
+
+function extractPanthersPayloadPath(html) {
+  if (!html) return null;
+  const direct = html.match(/\/sports\/football\/schedule\/_payload\.json\?[^"'\s<]+/i);
+  if (direct?.[0]) return direct[0];
+  const hrefMatch = html.match(/href="([^\"]*\/sports\/football\/schedule\/_payload\.json\?[^\"]+)"/i);
+  if (hrefMatch?.[1]) return hrefMatch[1];
+  return null;
+}
+
+function looksLikePanthersGame(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  const hasDate = typeof obj.date === "string" || typeof obj.game_date === "string";
+  const opponent = obj.opponent;
+  const hasOpponent =
+    (opponent && typeof opponent === "object" && (opponent.title || opponent.name)) ||
+    typeof obj.opponent_title === "string" ||
+    typeof obj.opponent_name === "string";
+  return Boolean(hasDate && hasOpponent);
+}
+
+function findPanthersGamesInPayload(node, out = []) {
+  if (!node) return out;
+  if (Array.isArray(node)) {
+    for (const item of node) findPanthersGamesInPayload(item, out);
+    return out;
+  }
+  if (typeof node !== "object") return out;
+  if (looksLikePanthersGame(node)) out.push(node);
+  for (const value of Object.values(node)) {
+    if (value && typeof value === "object") findPanthersGamesInPayload(value, out);
+  }
+  return out;
+}
+
+function normalizePanthersStatus(rawStatus, gameStateRaw, homeScore, awayScore) {
+  const status = String(rawStatus || "").toUpperCase();
+  if (status.includes("FINAL")) return "FT";
+  if (status.includes("LIVE") || status.includes("PROGRESS") || status.includes("IN GAME")) return "LIVE";
+  if (status.includes("POSTPON")) return "PPD";
+  if (status.includes("CANCEL")) return "CANC";
+
+  const gameState = Number(gameStateRaw);
+  if (!Number.isNaN(gameState)) {
+    if (gameState >= 400) return "FT";
+    if (gameState >= 330 && gameState < 400) return "LIVE";
+  }
+
+  if (homeScore != null && awayScore != null) return "FT";
+  return "NS";
+}
+
+function parsePanthersGamesFromPayload(payload) {
+  const candidates = findPanthersGamesInPayload(payload);
+  const normalized = [];
+
+  for (const g of candidates) {
+    const opponentName =
+      g?.opponent?.title || g?.opponent?.name || g?.opponent_title || g?.opponent_name || "Opponent";
+
+    const atVs = String(g?.at_vs || g?.atVs || "").trim().toLowerCase();
+    const isHome = atVs === "vs" || atVs === "home" || atVs === "h";
+    const isAway = atVs === "at" || atVs === "away" || atVs === "a";
+
+    const homeTeam = isAway ? opponentName : "Pittsburgh Panthers";
+    const awayTeam = isAway ? "Pittsburgh Panthers" : opponentName;
+
+    const homeScoreRaw = g?.home_score ?? g?.homeScore ?? g?.score_home ?? null;
+    const awayScoreRaw = g?.away_score ?? g?.awayScore ?? g?.score_away ?? null;
+    const homeScore = homeScoreRaw != null && homeScoreRaw !== "" ? Number(homeScoreRaw) : null;
+    const awayScore = awayScoreRaw != null && awayScoreRaw !== "" ? Number(awayScoreRaw) : null;
+
+    const status = normalizePanthersStatus(g?.status, g?.game_state, homeScore, awayScore);
+    const tv = g?.media?.tv || g?.tv || g?.broadcast || "";
+
+    const rawDate = g?.date || g?.game_date || null;
+    let dateEvent = null;
+    let strTime = null;
+    let strTimestamp = "TBD";
+    if (rawDate) {
+      const parsed = new Date(rawDate);
+      if (!Number.isNaN(parsed.getTime())) {
+        strTimestamp = parsed.toISOString();
+        dateEvent = strTimestamp.slice(0, 10);
+        strTime = strTimestamp.slice(11, 19);
+      }
+    }
+
+    normalized.push({
+      idEvent: String(g?.id || g?.game_id || `${dateEvent || "tbd"}-${opponentName}-${atVs || "x"}`),
+      dateEvent,
+      strTime,
+      strTimestamp,
+      strStatus: status,
+      intRound: g?.week ?? null,
+      strTVStation: tv || "TBD",
+      strHomeTeam: homeTeam,
+      strAwayTeam: awayTeam,
+      intHomeScore: Number.isFinite(homeScore) ? homeScore : null,
+      intAwayScore: Number.isFinite(awayScore) ? awayScore : null
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const g of normalized) {
+    const key = `${g.dateEvent || "tbd"}|${g.strHomeTeam}|${g.strAwayTeam}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(g);
+  }
+
+  deduped.sort((a, b) => {
+    const ta = a.strTimestamp && a.strTimestamp !== "TBD" ? new Date(a.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.strTimestamp && b.strTimestamp !== "TBD" ? new Date(b.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+
+  return deduped;
+}
+
+async function fetchPittPanthersGamesFromSite() {
+  const pageUrl = "https://pittsburghpanthers.com/sports/football/schedule";
+  const pageRes = await fetch(pageUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "text/html,application/xhtml+xml"
+    }
+  });
+  if (!pageRes.ok) throw new Error(`Pitt schedule page fetch failed: ${pageRes.status}`);
+
+  const html = await pageRes.text();
+  const payloadPath = extractPanthersPayloadPath(html);
+  if (!payloadPath) throw new Error("Pitt payload URL not found in schedule page");
+
+  const payloadUrl = payloadPath.startsWith("http")
+    ? payloadPath
+    : `https://pittsburghpanthers.com${payloadPath.startsWith("/") ? "" : "/"}${payloadPath}`;
+
+  const payloadRes = await fetch(payloadUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "application/json,text/plain,*/*"
+    }
+  });
+  if (!payloadRes.ok) throw new Error(`Pitt payload fetch failed: ${payloadRes.status}`);
+
+  const payloadJson = await payloadRes.json();
+  const games = parsePanthersGamesFromPayload(payloadJson);
+  if (!games.length) throw new Error("Pitt payload parse returned 0 games");
+  return games;
+}
+
 const TEAM_IDS = {
   steelers:"134925",
   penguins:"134844",
@@ -259,13 +591,69 @@ export default async function handler(req,res){
       return res.status(200).send(cache[teamKey].body);
     }
 
-    const lastRes = await fetch(`${API_BASE}/eventslast.php?id=${TEAM_ID}`);
-    const lastJson = await lastRes.json();
-    const lastGames = lastJson?.results || [];
+    let lastGames = [];
+    let nextGames = [];
 
-    const nextRes = await fetch(`${API_BASE}/eventsnext.php?id=${TEAM_ID}`);
-    const nextJson = await nextRes.json();
-    const nextGames = nextJson?.events || [];
+    if (teamKey === "steelers") {
+      try {
+        const steelersGames = await fetchSteelersGamesFromSite();
+        const nowMs = Date.now();
+        const dated = steelersGames
+          .map(g => ({ g, ms: g.strTimestamp && g.strTimestamp !== "TBD" ? new Date(g.strTimestamp).getTime() : null }))
+          .filter(item => item.ms !== null && !Number.isNaN(item.ms));
+
+        lastGames = dated
+          .filter(item => item.ms <= nowMs || (item.g.intHomeScore != null && item.g.intAwayScore != null))
+          .sort((a, b) => b.ms - a.ms)
+          .map(item => item.g);
+
+        nextGames = dated
+          .filter(item => item.ms > nowMs)
+          .sort((a, b) => a.ms - b.ms)
+          .map(item => item.g);
+
+        // Keep TBD games available as upcoming when dates are not finalized.
+        const tbdGames = steelersGames.filter(g => g.strTimestamp === "TBD");
+        nextGames = [...nextGames, ...tbdGames];
+      } catch (e) {
+        console.warn("Steelers.com source failed, falling back to TheSportsDB:", e.message || e);
+      }
+    }
+
+    if (teamKey === "pittpanthers") {
+      try {
+        const panthersGames = await fetchPittPanthersGamesFromSite();
+        const nowMs = Date.now();
+        const dated = panthersGames
+          .map(g => ({ g, ms: g.strTimestamp && g.strTimestamp !== "TBD" ? new Date(g.strTimestamp).getTime() : null }))
+          .filter(item => item.ms !== null && !Number.isNaN(item.ms));
+
+        lastGames = dated
+          .filter(item => item.ms <= nowMs || item.g.strStatus === "FT" || item.g.strStatus === "LIVE")
+          .sort((a, b) => b.ms - a.ms)
+          .map(item => item.g);
+
+        nextGames = dated
+          .filter(item => item.ms > nowMs && item.g.strStatus !== "FT")
+          .sort((a, b) => a.ms - b.ms)
+          .map(item => item.g);
+
+        const tbdGames = panthersGames.filter(g => g.strTimestamp === "TBD");
+        nextGames = [...nextGames, ...tbdGames];
+      } catch (e) {
+        console.warn("PittsburghPanthers.com source failed, falling back to TheSportsDB:", e.message || e);
+      }
+    }
+
+    if (!lastGames.length && !nextGames.length) {
+      const lastRes = await fetch(`${API_BASE}/eventslast.php?id=${TEAM_ID}`);
+      const lastJson = await lastRes.json();
+      lastGames = lastJson?.results || [];
+
+      const nextRes = await fetch(`${API_BASE}/eventsnext.php?id=${TEAM_ID}`);
+      const nextJson = await nextRes.json();
+      nextGames = nextJson?.events || [];
+    }
 
     // ======= NEW LOGIC: detect CURRENT/ONGOING GAME =======
     const nowISO = new Date().toISOString();

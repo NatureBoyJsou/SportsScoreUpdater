@@ -40,6 +40,7 @@ html, body {
   pointer-events: none;
 }
 #steelersScreen { background-image: url('/SteelersBG.png'); }
+#piratesScreen { background-image: url('/pncpark.jpg'); }
 #penguinsScreen { background-image: url('/PenguinsBG.jpg'); }
 #pittpanthersScreen { background-image: url('/PittBG.png'); }
 #pittSoccerScreen { background-image: url('/PittMS.jpeg'); }
@@ -171,6 +172,7 @@ h1 { font-size: 2.5vw; }
 
   /* ---------- Fix latest game horizontal alignment ---------- */
   #steelersLatest > div,
+  #piratesLatest > div,
   #penguinsLatest > div,
   #pittpanthersLatest > div,
   #pittSoccerLatest > div,
@@ -184,6 +186,7 @@ h1 { font-size: 2.5vw; }
   }
 
   #steelersLatest .team,
+  #piratesLatest .team,
   #penguinsLatest .team,
   #pittpanthersLatest .team,
   #pittSoccerLatest .team,
@@ -193,6 +196,7 @@ h1 { font-size: 2.5vw; }
   }
 
   #steelersLatest .score,
+  #piratesLatest .score,
   #penguinsLatest .score,
   #pittpanthersLatest .score,
   #pittSoccerLatest .score,
@@ -221,6 +225,20 @@ h1 { font-size: 2.5vw; }
         <div class="status"><small id="steelersFetchedAt"></small></div>
         <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
         <div id="steelersSchedule" class="schedule"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pirates -->
+  <div id="piratesScreen" class="screen">
+    <h1></h1>
+    <div class="card">
+      <div id="piratesLoading">Loading…</div>
+      <div id="piratesContent" style="display:none;">
+        <div id="piratesLatest"></div>
+        <div class="status"><small id="piratesFetchedAt"></small></div>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <div id="piratesSchedule" class="schedule"></div>
       </div>
     </div>
   </div>
@@ -290,6 +308,7 @@ h1 { font-size: 2.5vw; }
 /* ---------------- teams config ---------------- */
 const teams = [
   { name: 'steelers', api: '/api/scores?team=steelers', img:'/PittsburghSteelersLogo.png' },
+  { name: 'pirates', api: '/api/scores?team=pirates', img:'/PiratesLogo.png' },
   { name: 'penguins', api: '/api/scores?team=penguins', img:'/PittsburghPenguinsLogo.png' },
   { name: 'pittpanthers', api: '/api/scores?team=pittpanthers', img:'/PittFootballLogo.jpg' },
   // pittSoccer will be filled from CSV on the server

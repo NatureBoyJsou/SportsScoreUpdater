@@ -328,13 +328,16 @@ function formatGame(g, future=false, teamKey=null) {
     ? getPittFootballBroadcast(g.strHomeTeam, g.strAwayTeam)
     : null;
 
+  const homeLogo = g.strHomeBadge || getESPNLogo(g.strHomeTeam);
+  const awayLogo = g.strAwayBadge || getESPNLogo(g.strAwayTeam);
+
   return {
     idEvent:g.idEvent,
     gameDate,
     status:g.strStatus||(future?"NS":"FT"),
     tvChannel:
       teamKey === "steelers"
-        ? getSteelersTV(gameDate, g.intRound, g.strHomeTeam, g.strAwayTeam)
+        ? (g.strTVStation || getSteelersTV(gameDate, g.intRound, g.strHomeTeam, g.strAwayTeam))
         : teamKey === "pittpanthers"
           ? (pittBroadcast?.tv || g.strTVStation || "TBD")
           : (g.strTVStation || "TBD"),
@@ -342,8 +345,8 @@ function formatGame(g, future=false, teamKey=null) {
       teamKey === "pittpanthers"
         ? (pittBroadcast?.radio || g.strRadioStation || "93.7 The Fan")
         : (g.strRadioStation || ""),
-    home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:getESPNLogo(g.strHomeTeam), strTeamBadge:getESPNLogo(g.strHomeTeam)},
-    away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:getESPNLogo(g.strAwayTeam), strTeamBadge:getESPNLogo(g.strAwayTeam)}
+    home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:homeLogo, strTeamBadge:homeLogo},
+    away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:awayLogo, strTeamBadge:awayLogo}
   };
 }
 
@@ -577,36 +580,134 @@ function parsePanthersGamesFromPayload(payload) {
   return deduped;
 }
 
-async function fetchPittPanthersGamesFromSite() {
-  const pageUrl = "https://pittsburghpanthers.com/sports/football/schedule";
-  const pageRes = await fetch(pageUrl, {
+function parseEspnScheduleDateLabel(dateLabel, seasonYear) {
+  const m = String(dateLabel || "").match(/^[A-Za-z]{3},\s*([A-Za-z]{3})\s*(\d{1,2})$/);
+  if (!m) return null;
+  const monthMap = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+  const month = monthMap[m[1].toLowerCase()];
+  const day = Number(m[2]);
+  if (!month || !day) return null;
+  return `${seasonYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function parseEspnTimeLabel(timeLabel) {
+  const raw = String(timeLabel || "").trim();
+  if (!raw || /^tbd$/i.test(raw)) return null;
+
+  const tm = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!tm) return null;
+  let hh = Number(tm[1]);
+  const mm = Number(tm[2]);
+  const meridian = tm[3].toUpperCase();
+  if (meridian === "PM" && hh < 12) hh += 12;
+  if (meridian === "AM" && hh === 12) hh = 0;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+}
+
+function parsePittGamesFromEspnHtml(html) {
+  const seasonMatch = html.match(/Pittsburgh Panthers Schedule\s*(\d{4})/i);
+  const seasonYear = seasonMatch ? Number(seasonMatch[1]) : new Date().getUTCFullYear();
+
+  const rowRegex = /<tr[^>]*data-idx="\d+"[^>]*>([\s\S]*?)<\/tr>/gi;
+  const games = [];
+  let rowMatch;
+
+  while ((rowMatch = rowRegex.exec(html)) !== null) {
+    const row = rowMatch[1] || "";
+    if (!/data-testid="date"/i.test(row) || !/data-testid="opponent"/i.test(row)) continue;
+
+    const dateLabel = stripHtmlTags((row.match(/<span[^>]*data-testid="date"[^>]*>([\s\S]*?)<\/span>/i) || [])[1]);
+    const opponentCell = (row.match(/<div[^>]*data-testid="opponent"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || "";
+    const opponent = stripHtmlTags((opponentCell.match(/<a[^>]*>\s*([^<]+?)\s*<!--/) || opponentCell.match(/<a[^>]*>\s*([^<]+?)\s*<\/a>/i) || [])[1] || "Opponent");
+    const atVs = stripHtmlTags((opponentCell.match(/<span[^>]*class="pr2"[^>]*>([\s\S]*?)<\/span>/i) || [])[1]);
+    const timeLabel = stripHtmlTags((row.match(/<span[^>]*data-testid="time"[^>]*>([\s\S]*?)<\/span>/i) || [])[1]);
+
+    const networkBlock = (row.match(/<div[^>]*data-testid="network"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || "";
+    const networkClass = (networkBlock.match(/network-([a-z0-9-]+)/i) || [])[1] || "";
+    const network = networkClass
+      ? networkClass
+          .replace(/-/g, " ")
+          .replace(/\b[a-z]/g, c => c.toUpperCase())
+      : "";
+
+    const dateEvent = parseEspnScheduleDateLabel(dateLabel, seasonYear);
+    if (!dateEvent) continue;
+    const strTime = parseEspnTimeLabel(timeLabel);
+    const strTimestamp = strTime ? `${dateEvent}T${strTime}Z` : "TBD";
+
+    const isAway = /^@$/i.test(atVs);
+    games.push({
+      idEvent: `espn-pitt-${dateEvent}-${opponent}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
+      dateEvent,
+      strTime,
+      strTimestamp,
+      strStatus: "NS",
+      intRound: null,
+      strTVStation: network,
+      strHomeTeam: isAway ? opponent : "Pittsburgh Panthers",
+      strAwayTeam: isAway ? "Pittsburgh Panthers" : opponent,
+      intHomeScore: null,
+      intAwayScore: null
+    });
+  }
+
+  return games;
+}
+
+async function fetchPittPanthersGamesFromEspn() {
+  const url = "https://www.espn.com/college-football/team/schedule/_/id/221/pittsburgh-panthers";
+  const res = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0",
       "Accept": "text/html,application/xhtml+xml"
     }
   });
-  if (!pageRes.ok) throw new Error(`Pitt schedule page fetch failed: ${pageRes.status}`);
+  if (!res.ok) throw new Error(`ESPN Pitt schedule fetch failed: ${res.status}`);
 
-  const html = await pageRes.text();
-  const payloadPath = extractPanthersPayloadPath(html);
-  if (!payloadPath) throw new Error("Pitt payload URL not found in schedule page");
-
-  const payloadUrl = payloadPath.startsWith("http")
-    ? payloadPath
-    : `https://pittsburghpanthers.com${payloadPath.startsWith("/") ? "" : "/"}${payloadPath}`;
-
-  const payloadRes = await fetch(payloadUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      "Accept": "application/json,text/plain,*/*"
-    }
-  });
-  if (!payloadRes.ok) throw new Error(`Pitt payload fetch failed: ${payloadRes.status}`);
-
-  const payloadJson = await payloadRes.json();
-  const games = parsePanthersGamesFromPayload(payloadJson);
-  if (!games.length) throw new Error("Pitt payload parse returned 0 games");
+  const html = await res.text();
+  const games = parsePittGamesFromEspnHtml(html);
+  if (!games.length) throw new Error("ESPN Pitt schedule parse returned 0 games");
   return games;
+}
+
+async function fetchPittPanthersGamesFromSite() {
+  try {
+    const pageUrl = "https://pittsburghpanthers.com/sports/football/schedule";
+    const pageRes = await fetch(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml"
+      }
+    });
+    if (!pageRes.ok) throw new Error(`Pitt schedule page fetch failed: ${pageRes.status}`);
+
+    const html = await pageRes.text();
+    const payloadPath = extractPanthersPayloadPath(html);
+    if (!payloadPath) throw new Error("Pitt payload URL not found in schedule page");
+
+    const payloadUrl = payloadPath.startsWith("http")
+      ? payloadPath
+      : `https://pittsburghpanthers.com${payloadPath.startsWith("/") ? "" : "/"}${payloadPath}`;
+
+    const payloadRes = await fetch(payloadUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json,text/plain,*/*"
+      }
+    });
+    if (!payloadRes.ok) throw new Error(`Pitt payload fetch failed: ${payloadRes.status}`);
+
+    const payloadJson = await payloadRes.json();
+    const games = parsePanthersGamesFromPayload(payloadJson);
+    if (games.length) return games;
+  } catch (e) {
+    console.warn("Pitt official source failed, using ESPN schedule fallback:", e.message || e);
+  }
+
+  return fetchPittPanthersGamesFromEspn();
 }
 
 function normalizeNhlStatus(state) {
@@ -787,7 +888,15 @@ async function fetchRiverhoundsGamesFromSite() {
   });
   if (!res.ok) throw new Error(`Riverhounds schedule fetch failed: ${res.status}`);
   const html = await res.text();
-  return parseRiverhoundsGamesFromHtml(html);
+  const games = parseRiverhoundsGamesFromHtml(html);
+
+  const currentYear = new Date().getUTCFullYear();
+  const currentSeasonGames = games.filter(g => String(g.dateEvent || "").startsWith(`${currentYear}-`));
+  if (currentSeasonGames.length >= 6) {
+    return currentSeasonGames;
+  }
+
+  return games;
 }
 
 function normalizeTeamSlug(name) {
@@ -818,8 +927,87 @@ function mergeRiverhoundsScores(siteGames, dbGames) {
   });
 }
 
+function normalizeMlbStatus(abstractState, detailedState) {
+  const abstract = String(abstractState || "").toLowerCase();
+  const detailed = String(detailedState || "").toLowerCase();
+  if (abstract.includes("final") || detailed.includes("final")) return "FT";
+  if (abstract.includes("live") || abstract.includes("in progress") || detailed.includes("in progress")) return "LIVE";
+  if (abstract.includes("postponed") || detailed.includes("postponed")) return "PPD";
+  if (abstract.includes("cancelled") || detailed.includes("cancelled")) return "CANC";
+  return "NS";
+}
+
+function getMlbTeamLogo(teamId) {
+  if (!teamId) return "";
+  return `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
+}
+
+function parseMlbPiratesGamesFromScheduleJson(payload) {
+  const out = [];
+  const dates = Array.isArray(payload?.dates) ? payload.dates : [];
+
+  for (const dateBlock of dates) {
+    const games = Array.isArray(dateBlock?.games) ? dateBlock.games : [];
+    for (const g of games) {
+      const homeTeam = g?.teams?.home?.team;
+      const awayTeam = g?.teams?.away?.team;
+      if (!homeTeam?.name || !awayTeam?.name) continue;
+
+      const gameDate = g?.gameDate ? new Date(g.gameDate).toISOString() : "TBD";
+      const tvNames = [
+        ...(Array.isArray(g?.broadcasts?.tv) ? g.broadcasts.tv.map(b => b?.name) : []),
+        ...(Array.isArray(g?.broadcasts?.radio) ? g.broadcasts.radio.map(b => b?.name) : [])
+      ].filter(Boolean);
+
+      out.push({
+        idEvent: String(g?.gamePk || `${dateBlock?.date}-${awayTeam.name}-${homeTeam.name}`),
+        dateEvent: gameDate !== "TBD" ? gameDate.slice(0, 10) : null,
+        strTime: gameDate !== "TBD" ? gameDate.slice(11, 19) : null,
+        strTimestamp: gameDate,
+        strStatus: normalizeMlbStatus(g?.status?.abstractGameState, g?.status?.detailedState),
+        strTVStation: tvNames.join(" / ") || "TBD",
+        strHomeTeam: homeTeam.name,
+        strAwayTeam: awayTeam.name,
+        idHomeTeam: homeTeam.id ? String(homeTeam.id) : null,
+        idAwayTeam: awayTeam.id ? String(awayTeam.id) : null,
+        strHomeBadge: getMlbTeamLogo(homeTeam.id),
+        strAwayBadge: getMlbTeamLogo(awayTeam.id),
+        intHomeScore: Number.isFinite(g?.teams?.home?.score) ? Number(g.teams.home.score) : null,
+        intAwayScore: Number.isFinite(g?.teams?.away?.score) ? Number(g.teams.away.score) : null
+      });
+    }
+  }
+
+  return out;
+}
+
+async function fetchPiratesGamesFromMlbSite() {
+  const season = new Date().getUTCFullYear();
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=134&season=${season}&hydrate=broadcasts(all),linescore`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "application/json,text/plain,*/*"
+    }
+  });
+  if (!res.ok) throw new Error(`MLB Pirates schedule fetch failed: ${res.status}`);
+
+  const json = await res.json();
+  const games = parseMlbPiratesGamesFromScheduleJson(json);
+  if (!games.length) throw new Error("MLB Pirates schedule parse returned 0 games");
+
+  games.sort((a, b) => {
+    const ta = a.strTimestamp && a.strTimestamp !== "TBD" ? new Date(a.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.strTimestamp && b.strTimestamp !== "TBD" ? new Date(b.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+
+  return games;
+}
+
 const TEAM_IDS = {
   steelers:"134925",
+  pirates:"135277",
   penguins:"134844",
   pittpanthers:"136941",
   riverhounds:"138896"
@@ -915,6 +1103,28 @@ export default async function handler(req,res){
           .map(item => item.g);
       } catch (e) {
         console.warn("NHL Penguins source failed, falling back to TheSportsDB:", e.message || e);
+      }
+    }
+
+    if (teamKey === "pirates") {
+      try {
+        const piratesGames = await fetchPiratesGamesFromMlbSite();
+        const nowMs = Date.now();
+        const dated = piratesGames
+          .map(g => ({ g, ms: g.strTimestamp && g.strTimestamp !== "TBD" ? new Date(g.strTimestamp).getTime() : null }))
+          .filter(item => item.ms !== null && !Number.isNaN(item.ms));
+
+        lastGames = dated
+          .filter(item => item.ms <= nowMs || item.g.strStatus === "FT" || item.g.strStatus === "LIVE")
+          .sort((a, b) => b.ms - a.ms)
+          .map(item => item.g);
+
+        nextGames = dated
+          .filter(item => item.ms > nowMs && item.g.strStatus !== "FT")
+          .sort((a, b) => a.ms - b.ms)
+          .map(item => item.g);
+      } catch (e) {
+        console.warn("MLB Pirates source failed, falling back to TheSportsDB:", e.message || e);
       }
     }
 

@@ -298,14 +298,31 @@ const teams = [
 ];
 // ---------------- logos ----------------
 const ESPN_NCAA_LOGOS = {
-  "michigan state": "https://a.espncdn.com/i/teamlogos/ncaa/500/127.png",
+  "michiganstate": "https://a.espncdn.com/i/teamlogos/ncaa/500/127.png",
   "quinnipiac": "https://a.espncdn.com/i/teamlogos/ncaa/500/2440.png",
-  // add more opponent logos here
+  "westvirginia": "https://a.espncdn.com/i/teamlogos/ncaa/500/277.png",
+  "georgemason": "https://a.espncdn.com/i/teamlogos/ncaa/500/2244.png",
+  "maryland": "https://a.espncdn.com/i/teamlogos/ncaa/500/120.png",
+  "bucknell": "https://a.espncdn.com/i/teamlogos/ncaa/500/2083.png",
+  "pennstate": "https://a.espncdn.com/i/teamlogos/ncaa/500/213.png",
+  "penn": "https://a.espncdn.com/i/teamlogos/ncaa/500/219.png",
+  "smu": "https://a.espncdn.com/i/teamlogos/ncaa/500/2567.png",
+  "cornell": "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png",
+  "california": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
+  "louisville": "https://a.espncdn.com/i/teamlogos/ncaa/500/97.png",
+  "syracuse": "https://a.espncdn.com/i/teamlogos/ncaa/500/183.png",
+  "virginiatech": "https://a.espncdn.com/i/teamlogos/ncaa/500/259.png",
+  "duquesne": "https://a.espncdn.com/i/teamlogos/ncaa/500/2184.png",
+  "northcarolina": "https://a.espncdn.com/i/teamlogos/ncaa/500/153.png",
+  "georgetown": "https://a.espncdn.com/i/teamlogos/ncaa/500/46.png",
+  "bostoncollege": "https://a.espncdn.com/i/teamlogos/ncaa/500/103.png",
+  "virginia": "https://a.espncdn.com/i/teamlogos/ncaa/500/258.png"
 };
-const DEFAULT_LOGO = '/defaultLogo.png';
+const DEFAULT_LOGO = '/PittSoccerLogo.png';
 const PITT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/221.png&h=200&w=200";
 /* ---------------- helpers ---------------- */
 function safeDate(d){ const dt = new Date(d); return isNaN(dt.getTime())?null:dt; }
+function getTeamLogo(logo){ return (logo && String(logo).trim()) || DEFAULT_LOGO; }
 function toLocal(dt){ return dt ? new Date(dt.getTime() - dt.getTimezoneOffset() * 60000) : null; }
 function formatLocal(dt){ return dt ? dt.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}) : 'Invalid Date'; }
 function getSteelersNetwork(gameDate){
@@ -540,9 +557,9 @@ async function renderTeam(team){
         const networkHtml = latest.network ? `<span class="networkBadge">${latest.network}</span>` : '';
         latestContainer.innerHTML=`
         <div>
-          <div class="team"><img class="teamLogo" src="${latest.away?.logo||''}" alt=""><strong>${latest.away?.name||''}</strong></div>
+          <div class="team"><img class="teamLogo" src="${getTeamLogo(latest.away?.logo)}" alt="${(latest.away?.name||'').replace(/"/g,'')}"><strong>${latest.away?.name||''}</strong></div>
           <div class="score">${awayScore}</div>
-          <div class="team" style="text-align:right;"><img class="teamLogo" src="${latest.home?.logo||''}" alt=""><strong>${latest.home?.name||''}</strong></div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(latest.home?.logo)}" alt="${(latest.home?.name||'').replace(/"/g,'')}"><strong>${latest.home?.name||''}</strong></div>
           <div class="score">${homeScore}</div>
           <div style="clear:both;"></div>
           <div class="status">Status: ${latest.status||'Scheduled'} — ${formatLocal(local)} ${networkHtml}</div>
@@ -559,9 +576,9 @@ async function renderTeam(team){
         row.className='gameRow';
         row.innerHTML=`
           <div style="display:flex;align-items:center;gap:10px;">
-            <img class="teamLogoSmall" src="${g.away?.logo||''}"><strong>${g.away?.name}</strong>
+            <img class="teamLogoSmall" src="${getTeamLogo(g.away?.logo)}" alt="${(g.away?.name||'').replace(/"/g,'')}"><strong>${g.away?.name}</strong>
             <span style="opacity:0.7;margin:0 8px;">@</span>
-            <img class="teamLogoSmall" src="${g.home?.logo||''}"><strong>${g.home?.name}</strong>
+            <img class="teamLogoSmall" src="${getTeamLogo(g.home?.logo)}" alt="${(g.home?.name||'').replace(/"/g,'')}"><strong>${g.home?.name}</strong>
           </div>
           <div><small>${formatLocal(local)} — Status: ${g.status||'Scheduled'} ${networkHtml}</small></div>`;
         scheduleDiv.appendChild(row);
@@ -587,9 +604,9 @@ async function renderTeam(team){
         const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
         latestContainer.innerHTML=`
         <div>
-          <div class="team"><img class="teamLogo" src="${latest.away?.logo}" alt=""><strong>${latest.away?.name}</strong></div>
+          <div class="team"><img class="teamLogo" src="${getTeamLogo(latest.away?.logo)}" alt="${(latest.away?.name||'').replace(/"/g,'')}"><strong>${latest.away?.name}</strong></div>
           <div class="score">${awayScore}</div>
-          <div class="team" style="text-align:right;"><img class="teamLogo" src="${latest.home?.logo}" alt=""><strong>${latest.home?.name}</strong></div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(latest.home?.logo)}" alt="${(latest.home?.name||'').replace(/"/g,'')}"><strong>${latest.home?.name}</strong></div>
           <div class="score">${homeScore}</div>
           <div style="clear:both;"></div>
           <div class="status">Status: ${latest.status} — ${formatLocal(local)} ${networkHtml}</div>
@@ -608,9 +625,9 @@ async function renderTeam(team){
         row.className='gameRow';
         row.innerHTML=`
         <div style="display:flex;align-items:center;gap:10px;">
-          <img class="teamLogoSmall" src="${g.away?.logo}"><strong>${g.away?.name}</strong>
+          <img class="teamLogoSmall" src="${getTeamLogo(g.away?.logo)}" alt="${(g.away?.name||'').replace(/"/g,'')}"><strong>${g.away?.name}</strong>
           <span style="opacity:0.7;margin:0 8px;">@</span>
-          <img class="teamLogoSmall" src="${g.home?.logo}"><strong>${g.home?.name}</strong></div>
+          <img class="teamLogoSmall" src="${getTeamLogo(g.home?.logo)}" alt="${(g.home?.name||'').replace(/"/g,'')}"><strong>${g.home?.name}</strong></div>
         <div><small>${formatLocal(local)} — Status: ${g.status} ${networkHtml}</small></div>`;
         scheduleDiv.appendChild(row);
       });

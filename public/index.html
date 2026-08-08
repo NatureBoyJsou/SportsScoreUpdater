@@ -323,6 +323,10 @@ const PITT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/22
 /* ---------------- helpers ---------------- */
 function safeDate(d){ const dt = new Date(d); return isNaN(dt.getTime())?null:dt; }
 function getTeamLogo(logo){ return (logo && String(logo).trim()) || DEFAULT_LOGO; }
+function getOpponentLogo(opponent){
+  const normalized = normalizeOpponent(opponent);
+  return ESPN_NCAA_LOGOS[normalized] || DEFAULT_LOGO;
+}
 function toLocal(dt){ return dt ? new Date(dt.getTime() - dt.getTimezoneOffset() * 60000) : null; }
 function formatLocal(dt){ return dt ? dt.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}) : 'Invalid Date'; }
 function getSteelersNetwork(gameDate){
@@ -485,8 +489,7 @@ function buildGamesFromCSV(rows){
     const dt = buildDateFromParts(dateParts, timeParts);
     const iso = dt && !isNaN(dt.getTime()) ? dt.toISOString() : null;
 
-const opponentKey = (opponent || '').toLowerCase();
-const opponentLogo = ESPN_NCAA_LOGOS && ESPN_NCAA_LOGOS[opponentKey] ? ESPN_NCAA_LOGOS[opponentKey] : '/defaultLogo.png';
+const opponentLogo = getOpponentLogo(opponent);
 
 return {
   gameDate: iso,
@@ -788,7 +791,7 @@ async function tryLoadPittSoccerHTML() {
           const timeParts = parseTimeString(timeStr);
           const dt = dateParts ? buildDateFromParts(dateParts, timeParts) : null;
           const parsedResult = parseScheduleTextResult(result);
-          const opponentLogo = ESPN_NCAA_LOGOS[normalizeOpponent(opponent)] || DEFAULT_LOGO;
+          const opponentLogo = getOpponentLogo(opponent);
           return {
             gameDate: dt ? dt.toISOString() : null,
             home: atHome ? { name: 'Pitt', logo: PITT_LOGO } : { name: opponent, logo: opponentLogo },
@@ -918,8 +921,7 @@ async function tryLoadPittSoccerHTML() {
         }
       }
 
-      const opponentKey = (opponent || '').toLowerCase();
-      const opponentLogo = ESPN_NCAA_LOGOS[opponentKey] || DEFAULT_LOGO;
+      const opponentLogo = getOpponentLogo(opponent);
 
       return {
         gameDate: gameDate.toISOString(),

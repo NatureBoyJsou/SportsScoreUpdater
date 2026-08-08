@@ -632,10 +632,10 @@ function parsePittResultScores(resultText, isAway) {
 function parsePittGamesFromScheduleTextHtml(html) {
   const seasonMatch = html.match(/<h1[^>]*>\s*(\d{4})\s+Football\s+Schedule\s*<\/h1>/i);
   const seasonYear = seasonMatch ? Number(seasonMatch[1]) : new Date().getUTCFullYear();
-  const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
-  if (!tbodyMatch?.[1]) return [];
+  const tbodyMatches = [...html.matchAll(/<tbody[^>]*>([\s\S]*?)<\/tbody>/gi)];
+  if (!tbodyMatches.length) return [];
 
-  const rows = tbodyMatch[1].match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  const rows = tbodyMatches.flatMap(m => m[1].match(/<tr[\s\S]*?<\/tr>/gi) || []);
   const games = [];
 
   for (const row of rows) {
@@ -897,6 +897,14 @@ function parseNhlGamesList(games) {
           .join(" / ")
       : "";
 
+    // Use logos from the NHL API directly; fall back to ESPN abbreviation-based URL
+    const homeAbbrev = (g?.homeTeam?.abbrev || "").toLowerCase();
+    const awayAbbrev = (g?.awayTeam?.abbrev || "").toLowerCase();
+    const homeLogo = g?.homeTeam?.logo ||
+      (homeAbbrev ? `https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/${homeAbbrev}.png` : "");
+    const awayLogo = g?.awayTeam?.logo ||
+      (awayAbbrev ? `https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/${awayAbbrev}.png` : "");
+
     return {
       idEvent: String(g?.id || `${g?.gameDate || "tbd"}-${g?.awayTeam?.abbrev || "a"}-${g?.homeTeam?.abbrev || "h"}`),
       dateEvent: g?.gameDate || null,
@@ -907,6 +915,8 @@ function parseNhlGamesList(games) {
       strRadioStation: g?.homeTeam?.radioLink || g?.awayTeam?.radioLink || "",
       strHomeTeam: formatNhlTeamName(g?.homeTeam),
       strAwayTeam: formatNhlTeamName(g?.awayTeam),
+      strHomeBadge: homeLogo,
+      strAwayBadge: awayLogo,
       intHomeScore: homeScore,
       intAwayScore: awayScore
     };
@@ -995,13 +1005,19 @@ function stripHtmlTags(value) {
 function parseRiverhoundsGamesFromHtml(html) {
   const yearMatch = html.match(/<h1[^>]*class="entry-title"[^>]*>(\d{4})\s+Schedule<\/h1>/i);
   const seasonYear = yearMatch ? Number(yearMatch[1]) : new Date().getUTCFullYear();
-  const cardRegex = /<div class="NewGame\s+GameContainer\s+([^"]+)"[\s\S]*?<\/div>\s*<\/div>\s*<!-- END OF MATCH/gi;
-  const games = [];
-  let m;
 
-  while ((m = cardRegex.exec(html)) !== null) {
-    const classTokens = m[1] || "";
-    const block = m[0] || "";
+  // Split by end-of-match markers which are reliably present
+  const blocks = html.split(/<!--\s*END OF MATCH/i);
+  const games = [];
+
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const block = blocks[i];
+
+    // Find the last GameContainer opening in this block
+    const classMatch = block.match(/<div[^>]*class="([^"]*NewGame[^"]*GameContainer[^"]*)"/i);
+    if (!classMatch) continue;
+
+    const classTokens = classMatch[1] || "";
     const isAway = /\bAwayGame\b/.test(classTokens);
     const isCompleted = /\bCompleted\b/.test(classTokens);
 
@@ -1014,6 +1030,8 @@ function parseRiverhoundsGamesFromHtml(html) {
     const tvLinks = [...block.matchAll(/<div class="Broadcast">[\s\S]*?<a [^>]*>([\s\S]*?)<\/a>/gi)]
       .map(x => stripHtmlTags(x[1]))
       .filter(Boolean);
+
+    if (!monthDay) continue;
 
     const opponent = [oppCity, oppNick].filter(Boolean).join(" ").trim() || "Opponent";
     const ts = parseRiverhoundsDateTime(monthDay, timeRaw, seasonYear);
@@ -1115,10 +1133,16 @@ function parseMlbPiratesGamesFromScheduleJson(payload) {
       if (!homeTeam?.name || !awayTeam?.name) continue;
 
       const gameDate = g?.gameDate ? new Date(g.gameDate).toISOString() : "TBD";
-      const tvNames = [
-        ...(Array.isArray(g?.broadcasts?.tv) ? g.broadcasts.tv.map(b => b?.name) : []),
-        ...(Array.isArray(g?.broadcasts?.radio) ? g.broadcasts.radio.map(b => b?.name) : [])
-      ].filter(Boolean);
+      const tvNames = Array.isArray(g?.broadcasts)
+        ? g.broadcasts
+            .filter(b => String(b?.type || "").toLowerCase() === "tv")
+            .map(b => b?.name)
+            .filter(Boolean)
+        : [];
+      // Fallback: if no typed TV entries, take all broadcast names
+      const tvNamesAll = tvNames.length ? tvNames : (
+        Array.isArray(g?.broadcasts) ? g.broadcasts.map(b => b?.name).filter(Boolean) : []
+      );
 
       out.push({
         idEvent: String(g?.gamePk || `${dateBlock?.date}-${awayTeam.name}-${homeTeam.name}`),
@@ -1126,7 +1150,7 @@ function parseMlbPiratesGamesFromScheduleJson(payload) {
         strTime: gameDate !== "TBD" ? gameDate.slice(11, 19) : null,
         strTimestamp: gameDate,
         strStatus: normalizeMlbStatus(g?.status?.abstractGameState, g?.status?.detailedState),
-        strTVStation: tvNames.join(" / ") || "TBD",
+        strTVStation: tvNamesAll.join(" / ") || "TBD",
         strHomeTeam: homeTeam.name,
         strAwayTeam: awayTeam.name,
         idHomeTeam: homeTeam.id ? String(homeTeam.id) : null,

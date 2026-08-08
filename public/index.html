@@ -664,9 +664,192 @@ function goToScreen(targetIndex){
   renderTeam(teams[currentScreen]);
 }
 
-// ---------------- Auto-load Pitt Soccer from HTML table ----------------
-// ---------------- Auto-load Pitt Soccer from HTML table ----------------
+// ---------------- Auto-load Pitt Soccer from the Panthers schedule text ----------------
+function normalizeOpponent(value){
+  return (value || '')
+    .replace(/#\d+/g, '')
+    .replace(/\(exh\)/gi, '')
+    .replace(/^(men['’]s\s+soccer|mens soccer)\s+/i, '')
+    .replace(/^(vs|at|versus)\s+/i, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function parseScheduleTextResult(resultText){
+  const text = (resultText || '').trim();
+  if(!text || text === '-' || text.toLowerCase()==='-') return null;
+  const m = text.match(/([WLT])\s*(\d+)-(\d+)/i);
+  if(!m) return { status: text };
+  const outcome = m[1].toUpperCase();
+  const score1 = parseInt(m[2], 10);
+  const score2 = parseInt(m[3], 10);
+  const status = outcome === 'W' ? `Win ${score1}-${score2}` : outcome === 'L' ? `Loss ${score1}-${score2}` : `Tie ${score1}-${score2}`;
+  return { status, homeScore: score1, awayScore: score2 };
+}
+
+function parseScheduleTextRows(text){
+  const lines = (text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  for(const line of lines){
+    if(!line.includes('|')) continue;
+    const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+    if(!cells.length) continue;
+    const first = (cells[0] || '').toLowerCase();
+    if(first.includes('date') || first.includes('time') || first.includes('opponent') || first.includes('result')) continue;
+    if(cells.length >= 7 && /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}/i.test(cells[0])){
+      rows.push(cells);
+    }
+  }
+  return rows;
+}
+
+function parseScheduleTextDate(dateStr, year){
+  const monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+  const cleaned = (dateStr || '').replace(/\s*\([^)]+\)\s*$/, '').trim();
+  const m = cleaned.match(/([A-Za-z]{3})\s+(\d{1,2})/);
+  if(m){
+    const mon = monthMap[m[1]];
+    const day = parseInt(m[2], 10);
+    if(mon !== undefined && !Number.isNaN(day)) return { y: year, m: mon + 1, d: day };
+  }
+  const fallback = new Date(`${cleaned} ${year}`);
+  if(!Number.isNaN(fallback.getTime())) return { y: fallback.getFullYear(), m: fallback.getMonth() + 1, d: fallback.getDate() };
+  return null;
+}
+
+function mergeGamesWithScheduleText(csvGames, remoteGames){
+  if(!csvGames.length || !remoteGames.length) return csvGames;
+  const remoteByKey = new Map();
+  for(const game of remoteGames){
+    if(!game.gameDate) continue;
+    const dt = safeDate(game.gameDate);
+    if(!dt) continue;
+    const dayKey = `${dt.getMonth() + 1}-${dt.getDate()}`;
+    const key = `${dayKey}-${normalizeOpponent(game.opponentName || game.rawEvent || '')}`;
+    remoteByKey.set(key, game);
+  }
+  return csvGames.map(game => {
+    const dt = safeDate(game.gameDate);
+    if(!dt) return game;
+    const dayKey = `${dt.getMonth() + 1}-${dt.getDate()}`;
+    const key = `${dayKey}-${normalizeOpponent(game.opponentName || game.rawEvent || '')}`;
+    const remoteGame = remoteByKey.get(key);
+    if(!remoteGame) return game;
+    const parsedResult = parseScheduleTextResult(remoteGame.result);
+    if(parsedResult){
+      game.status = parsedResult.status || game.status;
+      game.result = parsedResult.status || game.result;
+      if(parsedResult.homeScore != null && parsedResult.awayScore != null){
+        if(game.home?.name === 'Pitt'){
+          game.home.score = parsedResult.homeScore;
+          game.away.score = parsedResult.awayScore;
+        } else {
+          game.home.score = parsedResult.awayScore;
+          game.away.score = parsedResult.homeScore;
+        }
+      }
+    }
+    return game;
+  });
+}
+
 async function tryLoadPittSoccerHTML() {
+  const remoteUrl = 'https://pittsburghpanthers.com/sports/mens-soccer/schedule/text';
+
+  try {
+    const remoteResp = await fetch(remoteUrl, { cache: 'no-store' });
+    if(remoteResp.ok){
+      const text = await remoteResp.text();
+      const rows = parseScheduleTextRows(text);
+      if(rows.length){
+        const remoteGames = rows.map(row => {
+          const [dateStr, timeStr, atHomeStr, opponent, location, tournament, result] = row;
+          const atHome = (atHomeStr || '').toLowerCase() === 'home';
+          const year = new Date().getFullYear();
+          const dateParts = parseScheduleTextDate(dateStr, year);
+          const timeParts = parseTimeString(timeStr);
+          const dt = dateParts ? buildDateFromParts(dateParts, timeParts) : null;
+          const parsedResult = parseScheduleTextResult(result);
+          const opponentLogo = ESPN_NCAA_LOGOS[normalizeOpponent(opponent)] || DEFAULT_LOGO;
+          return {
+            gameDate: dt ? dt.toISOString() : null,
+            home: atHome ? { name: 'Pitt', logo: PITT_LOGO } : { name: opponent, logo: opponentLogo },
+            away: atHome ? { name: opponent, logo: opponentLogo } : { name: 'Pitt', logo: PITT_LOGO },
+            location,
+            status: parsedResult ? parsedResult.status : 'Scheduled',
+            result: parsedResult ? parsedResult.status : null,
+            tournament,
+            rawEvent: opponent,
+            opponentName: opponent,
+            isPast: dt ? dt.getTime() < Date.now() : false
+          };
+        }).filter(g => g.gameDate);
+
+        if(remoteGames.length){
+          const csvResp = await fetch('/Add2Calendar.csv', { cache: 'no-store' });
+          let games = [];
+          if(csvResp.ok){
+            const csvText = await csvResp.text();
+            const csvRows = parseCSV(csvText);
+            games = buildGamesFromCSV(csvRows).map(g => ({ ...g, isPast: safeDate(g.gameDate)?.getTime() < Date.now() }));
+            games = mergeGamesWithScheduleText(games, remoteGames);
+          } else {
+            games = remoteGames.map(g => ({ ...g, isPast: g.isPast }));
+          }
+
+          games.sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+          const allPast = games.every(g => g.isPast);
+          const pastGames = games.filter(g => g.isPast);
+          const latestGame = pastGames.length ? pastGames[pastGames.length - 1] : (games[0] || null);
+
+          window.uploadedSchedules['pittSoccer'] = {
+            latestGame,
+            upcomingGames: allPast ? games : games.filter(g => !g.isPast),
+            allGames: games,
+            seasonEnded: allPast,
+            fetchedAt: new Date().toISOString()
+          };
+
+          renderTeam(teams.find(t => t.name === 'pittSoccer'));
+          console.info(`Loaded Pitt Soccer schedule text — ${games.length} games, ${allPast ? 'season ended' : 'upcoming games active'}`);
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load Pitt Soccer schedule text:', e);
+  }
+
+  // Fallback: use the local CSV file if the remote schedule text is unavailable
+  const csvCandidates = ['/Add2Calendar.csv', '/public/Add2Calendar.csv'];
+  for(const csvUrl of csvCandidates){
+    try{
+      const resp = await fetch(csvUrl, { cache: 'no-store' });
+      if(!resp.ok) continue;
+      const text = await resp.text();
+      const rows = parseCSV(text);
+      const games = buildGamesFromCSV(rows).map(g => ({ ...g, isPast: safeDate(g.gameDate)?.getTime() < Date.now() }));
+      if(!games.length) continue;
+      const allPast = games.every(g => g.isPast);
+      const pastGames = games.filter(g => g.isPast);
+      const latestGame = pastGames.length ? pastGames[pastGames.length - 1] : (games[0] || null);
+      window.uploadedSchedules['pittSoccer'] = {
+        latestGame,
+        upcomingGames: allPast ? games : games.filter(g => !g.isPast),
+        allGames: games,
+        seasonEnded: allPast,
+        fetchedAt: new Date().toISOString()
+      };
+      renderTeam(teams.find(t => t.name === 'pittSoccer'));
+      console.info(`Loaded Pitt Soccer CSV fallback — ${games.length} games, ${allPast ? 'season ended' : 'upcoming games active'}`);
+      return;
+    } catch(e){
+      console.warn(`Failed to load Pitt Soccer CSV fallback from ${csvUrl}:`, e);
+    }
+  }
+
+  // Final fallback: use the old local HTML file if nothing else worked
   const url = '/PittSoccerSchedule.html';
   try {
     const resp = await fetch(url, { cache: 'no-store' });
@@ -684,7 +867,6 @@ async function tryLoadPittSoccerHTML() {
       const [dateStr, timeStr, atHomeStr, opponent, location, tournament, result] = row;
       const atHome = atHomeStr.toLowerCase() === 'home';
 
-      // Parse date robustly (Aug 21 → 2025-08-21)
       const monthMap = {
         Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5,
         Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11
@@ -694,12 +876,11 @@ async function tryLoadPittSoccerHTML() {
       if(dateMatch){
         const mon = monthMap[dateMatch[1]] ?? 0;
         const day = parseInt(dateMatch[2],10);
-        gameDate = new Date(2025, mon, day); // force 2025 season
+        gameDate = new Date(2025, mon, day);
       } else {
-        gameDate = new Date(dateStr + ' 2025'); // fallback
+        gameDate = new Date(dateStr + ' 2025');
       }
 
-      // Parse score and W/L/T
       let homeScore = null, awayScore = null, status = 'Scheduled';
       if(result){
         const m = result.match(/([WLT])\s*(\d+)-(\d+)/i);
@@ -714,7 +895,6 @@ async function tryLoadPittSoccerHTML() {
             homeScore = score2;
             awayScore = score1;
           }
-          // status relative to Pitt
           if(outcome==='W') status = `Win ${homeScore}-${awayScore}`;
           else if(outcome==='L') status = `Loss ${homeScore}-${awayScore}`;
           else status = `Tie ${homeScore}-${awayScore}`;
@@ -736,13 +916,9 @@ async function tryLoadPittSoccerHTML() {
       };
     });
 
-    // Sort ascending by date
     games.sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
 
-    // Determine if season is over (all games past)
     const allPast = games.every(g => g.isPast);
-
-    // Latest game is most recent past game
     const pastGames = games.filter(g => g.isPast);
     const latestGame = pastGames.length ? pastGames[pastGames.length-1] : (games[0] || null);
 
@@ -754,14 +930,12 @@ async function tryLoadPittSoccerHTML() {
       fetchedAt: new Date().toISOString()
     };
 
-    renderTeam(teams.find(t=>t.name==='pittSoccer'));
-    console.info(`Loaded Pitt Soccer HTML — ${games.length} games, ${allPast ? 'season ended' : 'upcoming games active'}`);
-
-  } catch(e){
-    console.error('Failed to load Pitt Soccer HTML:', e);
+    renderTeam(teams.find(t => t.name === 'pittSoccer'));
+    console.info(`Loaded Pitt Soccer HTML fallback — ${games.length} games, ${allPast ? 'season ended' : 'upcoming games active'}`);
+  } catch (e) {
+    console.error('Failed to load Pitt Soccer HTML fallback:', e);
   }
 }
-
 
 tryLoadPittSoccerHTML();
 

@@ -152,7 +152,30 @@ function getESPNLogo(teamName) {
   return "https://via.placeholder.com/48?text=?";
 }
 
-function getSteelersTV(gameDateISO) {
+const STEELERS_TV_BY_WEEK = {
+  1: "WPGH",
+  2: "KDKA",
+  3: "KDKA",
+  4: "AMAZON PRIME",
+  5: "KDKA",
+  6: "KDKA",
+  7: "NFL NETWORK",
+  8: "KDKA",
+  9: "NONE (BYE)",
+  10: "WPXI",
+  11: "KDKA",
+  12: "AMAZON PRIME",
+  13: "WPXI",
+  14: "ESPN",
+  15: "KDKA",
+  16: "TBD",
+  17: "KDKA",
+  18: "TBD"
+};
+
+function getSteelersTV(gameDateISO, roundRaw) {
+  const round = Number(roundRaw);
+  if (Number.isInteger(round) && STEELERS_TV_BY_WEEK[round]) return STEELERS_TV_BY_WEEK[round];
   if (!gameDateISO || gameDateISO === "TBD") return "TBD";
   const d = new Date(gameDateISO);
   const dtf = new Intl.DateTimeFormat("en-US", {
@@ -171,9 +194,9 @@ function getSteelersTV(gameDateISO) {
   }
   const dayMap = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
   const day = dayMap[weekday] ?? d.getDay();
-  if (day === 0) { if(hour===13) return "CBS — KDKA"; if(hour===20) return "FOX — WPGH"; }
-  if(day===4) return "Amazon Prime Video";
-  if(day===1) return "ESPN / ABC";
+  if (day === 0) { if(hour===13) return "KDKA"; if(hour===20) return "WPGH"; }
+  if(day===4) return "AMAZON PRIME";
+  if(day===1) return "ESPN";
   return "TBD";
 }
 
@@ -195,7 +218,7 @@ function formatGame(g, future=false, teamKey=null) {
     idEvent:g.idEvent,
     gameDate,
     status:g.strStatus||(future?"NS":"FT"),
-    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate):g.strTVStation||"TBD",
+    tvChannel:teamKey==="steelers"?getSteelersTV(gameDate, g.intRound):g.strTVStation||"TBD",
     home:{ id:g.idHomeTeam, name:g.strHomeTeam, score:homeScore, logo:getESPNLogo(g.strHomeTeam), strTeamBadge:getESPNLogo(g.strHomeTeam)},
     away:{ id:g.idAwayTeam, name:g.strAwayTeam, score:awayScore, logo:getESPNLogo(g.strAwayTeam), strTeamBadge:getESPNLogo(g.strAwayTeam)}
   };

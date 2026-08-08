@@ -603,7 +603,7 @@ async function renderTeam(team){
         const local=toLocal(dt);
         const awayScore=latest.away?.score??latest.awayScore??'-';
         const homeScore=latest.home?.score??latest.homeScore??'-';
-        const network=team.name==='steelers'?getSteelersNetwork(dt):'';
+        const network=latest.tvChannel || latest.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
         const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
         latestContainer.innerHTML=`
         <div>
@@ -622,7 +622,7 @@ async function renderTeam(team){
       else upcoming.forEach(g=>{
         const dt=safeDate(g.gameDate);
         const local=toLocal(dt);
-        const network=team.name==='steelers'?getSteelersNetwork(dt):'';
+        const network=g.tvChannel || g.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
         const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
         const row=document.createElement('div');
         row.className='gameRow';
@@ -689,7 +689,8 @@ function normalizeOpponent(value){
   const cleaned = (value || '').trim();
   let normalized = cleaned.toLowerCase();
   normalized = normalized.replace(/#\d+/g, '');
-  normalized = normalized.replace(/\(exh\)/g, '');
+  normalized = normalized.replace(/\(\s*exh\.?\s*\)/g, '');
+  normalized = normalized.replace(/\(\s*exhibition\s*\)/g, '');
   normalized = normalized.replace(/^men(?:'s|’s)?\s+soccer\s+/i, '');
   normalized = normalized.replace(/^mens soccer\s+/i, '');
   normalized = normalized.replace(/^(vs|at|versus)\s+/i, '');

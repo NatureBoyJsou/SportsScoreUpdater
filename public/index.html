@@ -81,6 +81,21 @@ small { color:#bbb; }
   margin-left: 6px;
   font-size: 1em;
 }
+.liveBadge {
+  display: inline-block;
+  background: #e00;
+  color: #fff;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 8px;
+  font-size: 1em;
+  animation: livePulse 1.2s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 h1 { font-size: 2.5vw; }
 .score { font-size: 5vw; }
 .status { font-size: 1.5vw; }
@@ -223,7 +238,7 @@ h1 { font-size: 2.5vw; }
       <div id="steelersContent" style="display:none;">
         <div id="steelersLatest"></div>
         <div class="status"><small id="steelersFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="steelersSchedule" class="schedule"></div>
       </div>
     </div>
@@ -237,7 +252,7 @@ h1 { font-size: 2.5vw; }
       <div id="piratesContent" style="display:none;">
         <div id="piratesLatest"></div>
         <div class="status"><small id="piratesFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="piratesSchedule" class="schedule"></div>
       </div>
     </div>
@@ -251,7 +266,7 @@ h1 { font-size: 2.5vw; }
       <div id="penguinsContent" style="display:none;">
         <div id="penguinsLatest"></div>
         <div class="status"><small id="penguinsFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="penguinsSchedule" class="schedule"></div>
       </div>
     </div>
@@ -265,7 +280,7 @@ h1 { font-size: 2.5vw; }
       <div id="pittpanthersContent" style="display:none;">
         <div id="pittpanthersLatest"></div>
         <div class="status"><small id="pittpanthersFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="pittpanthersSchedule" class="schedule"></div>
       </div>
     </div>
@@ -279,7 +294,7 @@ h1 { font-size: 2.5vw; }
       <div id="pittSoccerContent" style="display:none;">
         <div id="pittSoccerLatest"></div>
         <div class="status"><small id="pittSoccerFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="pittSoccerSchedule" class="schedule"></div>
       </div>
     </div>
@@ -293,7 +308,7 @@ h1 { font-size: 2.5vw; }
       <div id="riverhoundsContent" style="display:none;">
         <div id="riverhoundsLatest"></div>
         <div class="status"><small id="riverhoundsFetchedAt"></small></div>
-        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Schedule</h3>
+        <h3 style="margin-top:12px; margin-bottom:6px; font-size:16px;">Next Game</h3>
         <div id="riverhoundsSchedule" class="schedule"></div>
       </div>
     </div>
@@ -354,6 +369,38 @@ function getSteelersNetwork(gameDate){
   const day=dt.getDay(),hour=dt.getHours();
   if(day===0){if(hour===18)return'CBS-KDKA';if(hour===21)return'Fox-WPGH';if(hour===1)return'NBC/Peacock-WPXI';}
   if(day===4)return 'Amazon Prime';if(day===1)return 'ESPN'; return '';
+}
+
+function isGameLive(g){
+  const s = String(g.status || '').toUpperCase();
+  if(['LIVE','1H','2H','HT','ET','PEN','INPROGRESS'].includes(s)) return true;
+  if(/in.?progress|live|halftime/i.test(g.status || '')) return true;
+  // time-based: started within last 4 hours and not a finished status
+  const finished = ['FT','AET','FINAL','AP'].includes(s) || /^(win|loss|tie|final)/i.test(g.status || '');
+  if(!finished){
+    const dt = safeDate(g.gameDate);
+    if(dt){ const elapsed = Date.now()-dt.getTime(); if(elapsed>0 && elapsed<4*60*60*1000) return true; }
+  }
+  return false;
+}
+
+function getCurrentAndNextGame(games){
+  const dated = (games || [])
+    .filter(g => safeDate(g.gameDate))
+    .sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+  if(!dated.length) return { current:null, next:null };
+  const now = Date.now();
+  // live game takes priority for top slot
+  const live = dated.find(g => isGameLive(g));
+  if(live){
+    const nextAfterLive = dated.find(g => new Date(g.gameDate).getTime() > now && g !== live);
+    return { current:live, next:nextAfterLive||null };
+  }
+  // no live game: next upcoming is top
+  const upcoming = dated.find(g => new Date(g.gameDate).getTime() > now);
+  if(upcoming) return { current:upcoming, next:null };
+  // all past: most recent game
+  return { current:dated[dated.length-1], next:null };
 }
 
 /* ---------------- CSV parsing helpers ---------------- */
@@ -570,41 +617,44 @@ async function renderTeam(team){
     if(window.uploadedSchedules[team.name]){
       const json = window.uploadedSchedules[team.name];
       fetchedEl.textContent = 'Updated: ' + formatLocal(new Date(json.fetchedAt||new Date()));
-      const latest = json.latestGame || (json.allGames && json.allGames.length ? json.allGames[0] : null);
-      if(latest){
-        const dt = safeDate(latest.gameDate);
+      const _allGamesCSV = json.allGames || json.upcomingGames || [];
+      const { current: _currentCSV, next: _nextCSV } = getCurrentAndNextGame(_allGamesCSV);
+      if(_currentCSV){
+        const dt = safeDate(_currentCSV.gameDate);
         const local = toLocal(dt);
-        const awayScore = latest.away?.score ?? latest.awayScore ?? '-';
-        const homeScore = latest.home?.score ?? latest.homeScore ?? '-';
-        const networkHtml = latest.network ? `<span class="networkBadge">${latest.network}</span>` : '';
+        const live = isGameLive(_currentCSV);
+        const awayScore = live ? (_currentCSV.away?.score ?? _currentCSV.awayScore ?? '-') : '-';
+        const homeScore = live ? (_currentCSV.home?.score ?? _currentCSV.homeScore ?? '-') : '-';
+        const networkHtml = _currentCSV.network ? `<span class="networkBadge">${_currentCSV.network}</span>` : '';
+        const liveHtml = live ? `<span class="liveBadge">● LIVE</span>` : '';
         latestContainer.innerHTML=`
         <div>
-          <div class="team"><img class="teamLogo" src="${getTeamLogo(latest.away?.logo)}" alt="${(latest.away?.name||'').replace(/"/g,'')}"><strong>${latest.away?.name||''}</strong></div>
+          <div class="team"><img class="teamLogo" src="${getTeamLogo(_currentCSV.away?.logo)}" alt="${(_currentCSV.away?.name||'').replace(/"/g,'')}"><strong>${_currentCSV.away?.name||''}</strong></div>
           <div class="score">${awayScore}</div>
-          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(latest.home?.logo)}" alt="${(latest.home?.name||'').replace(/"/g,'')}"><strong>${latest.home?.name||''}</strong></div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(_currentCSV.home?.logo)}" alt="${(_currentCSV.home?.name||'').replace(/"/g,'')}"><strong>${_currentCSV.home?.name||''}</strong></div>
           <div class="score">${homeScore}</div>
           <div style="clear:both;"></div>
-          <div class="status">Status: ${latest.status||'Scheduled'} — ${formatLocal(local)} ${networkHtml}</div>
+          <div class="status">${liveHtml}${live?'In Progress':(_currentCSV.status||'Scheduled')} — ${formatLocal(local)} ${networkHtml}</div>
         </div>`;
       }
-      const upcoming = json.allGames || json.upcomingGames || [];
       scheduleDiv.innerHTML = '';
-      if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';
-      else upcoming.forEach(g=>{
-        const dt = safeDate(g.gameDate);
+      if(!_nextCSV){
+        scheduleDiv.innerHTML='<div class="gameRow">No upcoming games.</div>';
+      } else {
+        const dt = safeDate(_nextCSV.gameDate);
         const local = toLocal(dt);
-        const networkHtml = g.network ? `<span class="networkBadge">${g.network}</span>` : '';
+        const networkHtml = _nextCSV.network ? `<span class="networkBadge">${_nextCSV.network}</span>` : '';
         const row=document.createElement('div');
         row.className='gameRow';
         row.innerHTML=`
           <div style="display:flex;align-items:center;gap:10px;">
-            <img class="teamLogoSmall" src="${getTeamLogo(g.away?.logo)}" alt="${(g.away?.name||'').replace(/"/g,'')}"><strong>${g.away?.name}</strong>
+            <img class="teamLogoSmall" src="${getTeamLogo(_nextCSV.away?.logo)}" alt="${(_nextCSV.away?.name||'').replace(/"/g,'')}"><strong>${_nextCSV.away?.name}</strong>
             <span style="opacity:0.7;margin:0 8px;">@</span>
-            <img class="teamLogoSmall" src="${getTeamLogo(g.home?.logo)}" alt="${(g.home?.name||'').replace(/"/g,'')}"><strong>${g.home?.name}</strong>
+            <img class="teamLogoSmall" src="${getTeamLogo(_nextCSV.home?.logo)}" alt="${(_nextCSV.home?.name||'').replace(/"/g,'')}"><strong>${_nextCSV.home?.name}</strong>
           </div>
-          <div><small>${formatLocal(local)} — Status: ${g.status||'Scheduled'} ${networkHtml}</small></div>`;
+          <div><small>${formatLocal(local)} ${networkHtml}</small></div>`;
         scheduleDiv.appendChild(row);
-      });
+      }
       loading.style.display='none'; content.style.display='block';
       return;
     }
@@ -616,43 +666,45 @@ async function renderTeam(team){
       const json = await res.json();
       loading.style.display='none'; content.style.display='block';
       fetchedEl.textContent='Updated: '+formatLocal(new Date(json.fetchedAt||new Date()));
-      const latest=json.latestGame || (json.allGames && json.allGames.length ? json.allGames[0] : null);
-      if(latest){
-        const dt=safeDate(latest.gameDate);
+      const _allGamesAPI = json.allGames || json.upcomingGames || [];
+      const { current: _currentAPI, next: _nextAPI } = getCurrentAndNextGame(_allGamesAPI);
+      if(_currentAPI){
+        const dt=safeDate(_currentAPI.gameDate);
         const local=toLocal(dt);
-        const awayScore=latest.away?.score??latest.awayScore??'-';
-        const homeScore=latest.home?.score??latest.homeScore??'-';
-        const network=latest.tvChannel || latest.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
+        const live=isGameLive(_currentAPI);
+        const awayScore=live?(_currentAPI.away?.score??_currentAPI.awayScore??'-'):'-';
+        const homeScore=live?(_currentAPI.home?.score??_currentAPI.homeScore??'-'):'-';
+        const network=_currentAPI.tvChannel || _currentAPI.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
         const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
+        const liveHtml=live?`<span class="liveBadge">● LIVE</span>`:'';
         latestContainer.innerHTML=`
         <div>
-          <div class="team"><img class="teamLogo" src="${getTeamLogo(latest.away?.logo)}" alt="${(latest.away?.name||'').replace(/"/g,'')}"><strong>${latest.away?.name}</strong></div>
+          <div class="team"><img class="teamLogo" src="${getTeamLogo(_currentAPI.away?.logo)}" alt="${(_currentAPI.away?.name||'').replace(/"/g,'')}"><strong>${_currentAPI.away?.name}</strong></div>
           <div class="score">${awayScore}</div>
-          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(latest.home?.logo)}" alt="${(latest.home?.name||'').replace(/"/g,'')}"><strong>${latest.home?.name}</strong></div>
+          <div class="team" style="text-align:right;"><img class="teamLogo" src="${getTeamLogo(_currentAPI.home?.logo)}" alt="${(_currentAPI.home?.name||'').replace(/"/g,'')}"><strong>${_currentAPI.home?.name}</strong></div>
           <div class="score">${homeScore}</div>
           <div style="clear:both;"></div>
-          <div class="status">Status: ${latest.status} — ${formatLocal(local)} ${networkHtml}</div>
+          <div class="status">${liveHtml}${live?'In Progress':(_currentAPI.status||'Scheduled')} — ${formatLocal(local)} ${networkHtml}</div>
         </div>`;
       }
-      let upcoming=json.allGames||json.upcomingGames||[];
-      upcoming=upcoming.filter(g=>safeDate(g.gameDate)).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
       scheduleDiv.innerHTML='';
-      if(upcoming.length===0) scheduleDiv.innerHTML='<div class="gameRow">Season Has Ended.</div>';
-      else upcoming.forEach(g=>{
-        const dt=safeDate(g.gameDate);
+      if(!_nextAPI){
+        scheduleDiv.innerHTML='<div class="gameRow">No upcoming games.</div>';
+      } else {
+        const dt=safeDate(_nextAPI.gameDate);
         const local=toLocal(dt);
-        const network=g.tvChannel || g.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
+        const network=_nextAPI.tvChannel || _nextAPI.network || (team.name==='steelers'?getSteelersNetwork(dt):'');
         const networkHtml=network?`<span class="networkBadge">${network}</span>`:'';
         const row=document.createElement('div');
         row.className='gameRow';
         row.innerHTML=`
         <div style="display:flex;align-items:center;gap:10px;">
-          <img class="teamLogoSmall" src="${getTeamLogo(g.away?.logo)}" alt="${(g.away?.name||'').replace(/"/g,'')}"><strong>${g.away?.name}</strong>
+          <img class="teamLogoSmall" src="${getTeamLogo(_nextAPI.away?.logo)}" alt="${(_nextAPI.away?.name||'').replace(/"/g,'')}"><strong>${_nextAPI.away?.name}</strong>
           <span style="opacity:0.7;margin:0 8px;">@</span>
-          <img class="teamLogoSmall" src="${getTeamLogo(g.home?.logo)}" alt="${(g.home?.name||'').replace(/"/g,'')}"><strong>${g.home?.name}</strong></div>
-        <div><small>${formatLocal(local)} — Status: ${g.status} ${networkHtml}</small></div>`;
+          <img class="teamLogoSmall" src="${getTeamLogo(_nextAPI.home?.logo)}" alt="${(_nextAPI.home?.name||'').replace(/"/g,'')}"><strong>${_nextAPI.home?.name}</strong></div>
+        <div><small>${formatLocal(local)} ${networkHtml}</small></div>`;
         scheduleDiv.appendChild(row);
-      });
+      }
       return;
     }
 
@@ -668,10 +720,9 @@ async function renderTeam(team){
   }
 }
 
-/* ---------------- initial render + auto-refresh ---------------- */
+/* ---------------- initial render (on load, active screen only) ---------------- */
 function renderAllTeams(){ teams.forEach(t=>renderTeam(t)); }
-renderAllTeams();
-setInterval(renderAllTeams,45000);
+renderTeam(teams[0]);
 
 /* ---------------- screen rotation + buttons (unchanged) ---------------- */
 let currentScreen=0;

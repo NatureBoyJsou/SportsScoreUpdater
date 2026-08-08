@@ -580,6 +580,157 @@ function parsePanthersGamesFromPayload(payload) {
   return deduped;
 }
 
+function parsePittScheduleTextDateTime(dateLabel, timeLabel, seasonYear) {
+  const dateMatch = String(dateLabel || "").match(/^([A-Za-z]{3})\s+(\d{1,2})/);
+  if (!dateMatch) return { dateEvent: null, strTime: null, strTimestamp: "TBD" };
+
+  const monthMap = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+
+  const month = monthMap[dateMatch[1].toLowerCase()];
+  const day = Number(dateMatch[2]);
+  if (!month || !day) return { dateEvent: null, strTime: null, strTimestamp: "TBD" };
+
+  const dateEvent = `${seasonYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const raw = String(timeLabel || "").trim();
+  if (!raw || /^tbd$/i.test(raw)) return { dateEvent, strTime: null, strTimestamp: "TBD" };
+
+  let hh = 0;
+  let mm = 0;
+
+  if (/^noon$/i.test(raw)) {
+    hh = 12;
+  } else {
+    const tm = raw.replace(/\./g, "").match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (!tm) return { dateEvent, strTime: null, strTimestamp: "TBD" };
+    hh = Number(tm[1]);
+    mm = Number(tm[2] || 0);
+    const meridian = tm[3].toUpperCase();
+    if (meridian === "PM" && hh < 12) hh += 12;
+    if (meridian === "AM" && hh === 12) hh = 0;
+  }
+
+  const strTime = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+  return { dateEvent, strTime, strTimestamp: `${dateEvent}T${strTime}Z` };
+}
+
+function parsePittResultScores(resultText, isAway) {
+  const text = String(resultText || "").trim();
+  const m = text.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (!m) return { intHomeScore: null, intAwayScore: null, strStatus: "NS" };
+
+  const pittScore = Number(m[1]);
+  const oppScore = Number(m[2]);
+  if (isAway) {
+    return { intHomeScore: oppScore, intAwayScore: pittScore, strStatus: "FT" };
+  }
+  return { intHomeScore: pittScore, intAwayScore: oppScore, strStatus: "FT" };
+}
+
+function parsePittGamesFromScheduleTextHtml(html) {
+  const seasonMatch = html.match(/<h1[^>]*>\s*(\d{4})\s+Football\s+Schedule\s*<\/h1>/i);
+  const seasonYear = seasonMatch ? Number(seasonMatch[1]) : new Date().getUTCFullYear();
+  const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+  if (!tbodyMatch?.[1]) return [];
+
+  const rows = tbodyMatch[1].match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  const games = [];
+
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m => stripHtmlTags(m[1]));
+    if (cells.length < 7) continue;
+
+    const dateLabel = cells[0];
+    const timeLabel = cells[1];
+    const atHome = cells[2];
+    const opponent = cells[3] || "Opponent";
+    const result = cells[6] || "";
+
+    const isAway = /away/i.test(atHome);
+    const when = parsePittScheduleTextDateTime(dateLabel, timeLabel, seasonYear);
+    if (!when.dateEvent) continue;
+
+    const score = parsePittResultScores(result, isAway);
+    games.push({
+      idEvent: `pitt-text-${when.dateEvent}-${opponent}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
+      dateEvent: when.dateEvent,
+      strTime: when.strTime,
+      strTimestamp: when.strTimestamp,
+      strStatus: score.strStatus,
+      intRound: null,
+      strTVStation: "",
+      strHomeTeam: isAway ? opponent : "Pittsburgh Panthers",
+      strAwayTeam: isAway ? "Pittsburgh Panthers" : opponent,
+      intHomeScore: score.intHomeScore,
+      intAwayScore: score.intAwayScore
+    });
+  }
+
+  games.sort((a, b) => {
+    const ta = a.strTimestamp && a.strTimestamp !== "TBD" ? new Date(a.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.strTimestamp && b.strTimestamp !== "TBD" ? new Date(b.strTimestamp).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+
+  return games;
+}
+
+function normalizePittOpponentKey(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function mergePittTextAndLiveGames(textGames, liveGames) {
+  const byKey = new Map();
+
+  for (const g of liveGames || []) {
+    const opp = g.strHomeTeam === "Pittsburgh Panthers" ? g.strAwayTeam : g.strHomeTeam;
+    const key = `${g.dateEvent || "tbd"}|${normalizePittOpponentKey(opp)}`;
+    byKey.set(key, g);
+  }
+
+  const merged = (textGames || []).map(g => {
+    const opp = g.strHomeTeam === "Pittsburgh Panthers" ? g.strAwayTeam : g.strHomeTeam;
+    const key = `${g.dateEvent || "tbd"}|${normalizePittOpponentKey(opp)}`;
+    const live = byKey.get(key);
+    if (!live) return g;
+
+    return {
+      ...g,
+      strTime: live.strTime || g.strTime,
+      strTimestamp: live.strTimestamp !== "TBD" ? live.strTimestamp : g.strTimestamp,
+      strStatus: live.strStatus || g.strStatus,
+      strTVStation: live.strTVStation || g.strTVStation,
+      intHomeScore: live.intHomeScore != null ? live.intHomeScore : g.intHomeScore,
+      intAwayScore: live.intAwayScore != null ? live.intAwayScore : g.intAwayScore,
+      idEvent: live.idEvent || g.idEvent
+    };
+  });
+
+  return merged;
+}
+
+async function fetchPittPanthersGamesFromTextPage() {
+  const url = "https://pittsburghpanthers.com/sports/football/schedule/text";
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "text/html,application/xhtml+xml"
+    }
+  });
+  if (!res.ok) throw new Error(`Pitt text schedule fetch failed: ${res.status}`);
+
+  const html = await res.text();
+  const games = parsePittGamesFromScheduleTextHtml(html);
+  if (!games.length) throw new Error("Pitt text schedule parse returned 0 games");
+  return games;
+}
+
 function parseEspnScheduleDateLabel(dateLabel, seasonYear) {
   const m = String(dateLabel || "").match(/^[A-Za-z]{3},\s*([A-Za-z]{3})\s*(\d{1,2})$/);
   if (!m) return null;
@@ -674,6 +825,8 @@ async function fetchPittPanthersGamesFromEspn() {
 }
 
 async function fetchPittPanthersGamesFromSite() {
+  let liveGames = [];
+
   try {
     const pageUrl = "https://pittsburghpanthers.com/sports/football/schedule";
     const pageRes = await fetch(pageUrl, {
@@ -701,11 +854,19 @@ async function fetchPittPanthersGamesFromSite() {
     if (!payloadRes.ok) throw new Error(`Pitt payload fetch failed: ${payloadRes.status}`);
 
     const payloadJson = await payloadRes.json();
-    const games = parsePanthersGamesFromPayload(payloadJson);
-    if (games.length) return games;
+    liveGames = parsePanthersGamesFromPayload(payloadJson);
   } catch (e) {
-    console.warn("Pitt official source failed, using ESPN schedule fallback:", e.message || e);
+    console.warn("Pitt official live/payload source failed, continuing with text schedule:", e.message || e);
   }
+
+  try {
+    const textGames = await fetchPittPanthersGamesFromTextPage();
+    if (textGames.length) return mergePittTextAndLiveGames(textGames, liveGames);
+  } catch (e) {
+    console.warn("Pitt text schedule source failed, trying live-only/ESPN fallback:", e.message || e);
+  }
+
+  if (liveGames.length) return liveGames;
 
   return fetchPittPanthersGamesFromEspn();
 }
